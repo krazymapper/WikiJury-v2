@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Personnalisations spécifiques au projet */
+.wikijury-bg {
+  @apply bg-gradient-to-r from-blue-500 to-indigo-600;
+}
+
+.wikijury-card {
+  @apply bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow;
+}
+
+.wikijury-btn {
+  @apply px-4 py-2 rounded-md font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors;
+}
