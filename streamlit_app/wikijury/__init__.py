@@ -2,12 +2,14 @@
 
 from .columns import detect_kind, load_columns_spec, map_columns, missing_fields
 from .scoring import (
+    ARTICLE_MODES,
     COAUTHOR_RULES,
     CRITERIA,
     CRITERION_SHORT,
     Dataset,
     compute_ranking,
     criterion_label,
+    enabled_criteria,
     load_default_scoring,
     merge_scoring,
     wikis_in_data,
@@ -15,6 +17,8 @@ from .scoring import (
 
 __version__ = "3.0.0"
 __all__ = [
+    "ARTICLE_MODES",
+    "enabled_criteria",
     "COAUTHOR_RULES",
     "wikis_in_data",
     "CRITERIA",

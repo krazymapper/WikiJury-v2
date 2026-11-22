@@ -14,6 +14,8 @@ venv/
 *.xlsx
 *.xls
 !shared/fixtures/**/*.csv
+!shared/fixtures/**/*.xls
+!shared/fixtures/**/*.xlsx
 
 # Divers
 .env

@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 from typing import Any
 
-from .scoring import COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, Participant
+from .scoring import ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, Participant, criterion_label, shown_criteria
 
 MAX_FILE_BYTES = 25 * 1024 * 1024
 
@@ -48,6 +48,26 @@ def _read_xlsx(data: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     return [h for h in headers if h], rows
 
 
+def _read_xls(data: bytes) -> tuple[list[str], list[dict[str, Any]]]:
+    import xlrd
+
+    sheet = xlrd.open_workbook(file_contents=data).sheet_by_index(0)
+    if sheet.nrows == 0:
+        return [], []
+
+    def value(v: Any) -> Any:
+        # xlrd renvoie tous les nombres en flottants : 12.0 redevient 12
+        return int(v) if isinstance(v, float) and v.is_integer() else v
+
+    headers = [str(h).strip() for h in sheet.row_values(0)]
+    rows = []
+    for i in range(1, sheet.nrows):
+        r = [value(v) for v in sheet.row_values(i)]
+        if any(v not in (None, "") for v in r):
+            rows.append({h: v for h, v in zip(headers, r) if h})
+    return [h for h in headers if h], rows
+
+
 def read_upload(name: str, data: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     if len(data) > MAX_FILE_BYTES:
         raise ImportError_(f"Fichier trop volumineux ({round(len(data) / 1e6)} Mo). La limite est de 25 Mo.")
@@ -57,8 +77,8 @@ def read_upload(name: str, data: bytes) -> tuple[list[str], list[dict[str, Any]]
     if ext in {".csv", ".tsv", ".txt"}:
         return _read_csv(data)
     if ext == ".xls":
-        raise ImportError_("Le format .xls (Excel 97-2003) n’est pas pris en charge. Enregistrez le fichier en .xlsx ou en CSV.")
-    raise ImportError_("Format non reconnu. Importez un fichier CSV ou Excel (.xlsx).")
+        return _read_xls(data)
+    raise ImportError_("Format non reconnu. Importez un fichier CSV ou Excel (.xlsx ou .xls).")
 
 
 def _cell(value: Any) -> str:
@@ -74,6 +94,7 @@ def _cell(value: Any) -> str:
 
 def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> str:
     """Même format que l'export de la version web (séparateur « ; », BOM pour Excel)."""
+    CRITERIA = shown_criteria(scoring)
     header = ["Rang", "Contributeur"]
     for c in CRITERIA:
         header += [f"{CRITERION_SHORT[c]} (nombre)", f"{CRITERION_SHORT[c]} (points)"]
@@ -88,10 +109,9 @@ def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> 
     lines.append([])
     lines.append(
         ["# Barème"]
-        + [f"{CRITERION_SHORT[c]} = {scoring['points'][c]} pt" for c in CRITERIA]
+        + [f"{criterion_label(c, scoring)} = {scoring['points'][c]} pt" for c in CRITERIA]
         + [
-            f"Article long ≥ {scoring['thresholds']['article_long_min_chars']} car.",
-            f"Article court ≥ {scoring['thresholds']['article_short_min_chars']} car.",
+            f"Articles : {ARTICLE_MODES[scoring['rules'].get('article_mode', 'tiers')]}",
             f"Co-auteurs : {COAUTHOR_RULES[scoring['rules']['coauthors']]}",
         ]
         + (
@@ -99,5 +119,6 @@ def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> 
             if scoring["rules"].get("excluded_wikis")
             else []
         )
+        + [f"Plafond {CRITERION_SHORT[c]} = {v} pts" for c, v in scoring["rules"].get("caps", {}).items()]
     )
     return "﻿" + "\r\n".join(";".join(_cell(v) for v in line) for line in lines)

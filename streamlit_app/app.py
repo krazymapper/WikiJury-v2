@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from wikijury import (
+    ARTICLE_MODES,
     COAUTHOR_RULES,
     CRITERIA,
     CRITERION_SHORT,
@@ -24,6 +25,7 @@ from wikijury import (
     compute_ranking,
     criterion_label,
     detect_kind,
+    enabled_criteria,
     load_columns_spec,
     load_default_scoring,
     map_columns,
@@ -32,6 +34,7 @@ from wikijury import (
     wikis_in_data,
 )
 from wikijury.io import ImportError_, ranking_to_csv, read_upload
+from wikijury.scoring import shown_criteria
 
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = ROOT / "shared" / "brand"
@@ -45,6 +48,8 @@ st.set_page_config(
 )
 
 COLORS = {
+    "article_created": "#006699",
+    "article_translated": "#6AA9CC",
     "article_long": "#006699",
     "article_short": "#7DB9D6",
     "article_edited": "#A3ADBB",
@@ -67,6 +72,7 @@ FIELD_LABELS = {
     "edits": "Modifications",
     "bytes": "Octets ajoutés",
     "references": "Références ajoutées",
+    "translated": "Article traduit",
     "usernames": "Participants",
     "wiki": "Wiki",
     "namespace": "Espace de noms",
@@ -80,7 +86,10 @@ STATUS_TEXT = {
     "not_new": "Non créé pendant la campagne",
     "photo_uploaded": "Photo téléversée",
     "photo_uploaded_used": "Bonus : photo utilisée",
-    "article_edited": "Article existant modifié",
+    "article_edited": "Article amélioré",
+    "edit_too_small": "Modification sous le minimum",
+    "article_created": "Article créé",
+    "article_translated": "Article traduit",
     "reference_added": "Références ajoutées",
     "wikidata_item": "Élément créé",
     "photo_existing_used": "Ajoutée à un article",
@@ -122,9 +131,17 @@ def init_state() -> None:
     st.session_state.setdefault("use_sample", False)
     st.session_state.setdefault("rule_coauthors", DEFAULT_SCORING["rules"]["coauthors"])
     st.session_state.setdefault("preset", "standard")
-    for c in CRITERIA:
-        st.session_state.setdefault(f"cap_{c}", 0)
+    if "mode" not in st.session_state:
+        st.session_state["mode"] = DEFAULT_SCORING["rules"]["article_mode"]
+        for c in CRITERIA:
+            st.session_state[f"en_{c}"] = c in DEFAULT_SCORING["rules"]["enabled"]
+            st.session_state[f"cap_{c}"] = 0
     st.session_state.setdefault("campaign", "")
+    # Streamlit oublie l'état d'un widget qui n'est pas affiché pendant une exécution :
+    # on recopie ces valeurs pour qu'un critère masqué garde ses réglages.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith(("pts_", "th_", "en_", "cap_")):
+            st.session_state[key] = st.session_state[key]
 
 
 def reset_scoring() -> None:
@@ -136,6 +153,8 @@ def reset_scoring() -> None:
         st.session_state[f"th_{k}"] = v
     for c in CRITERIA:
         st.session_state[f"cap_{c}"] = int(preset["rules"].get("caps", {}).get(c, 0))
+        st.session_state[f"en_{c}"] = c in enabled_criteria(preset)
+    st.session_state["mode"] = preset["rules"].get("article_mode", "tiers")
 
 
 def fmt(n: float) -> str:
@@ -172,32 +191,41 @@ with st.sidebar:
 
     uploads = st.file_uploader(
         "Fichiers à classer",
-        type=["csv", "tsv", "txt", "xlsx"],
+        type=["csv", "tsv", "txt", "xlsx", "xls"],
         accept_multiple_files=True,
         help="Exports de l’Outreach Dashboard ou tableaux maison : articles, photos, éléments Wikidata, participants.",
     )
 
     st.markdown("#### Barème")
-    st.selectbox("Modèle de barème", list(PRESETS), format_func=lambda k: PRESETS[k]["label"], key="preset", on_change=reset_scoring)
-    scoring_points = {}
+    st.selectbox("Type de campagne", list(PRESETS), format_func=lambda k: PRESETS[k]["label"], key="preset", on_change=reset_scoring)
+    st.caption(PRESETS[st.session_state.preset].get("description", ""))
+    st.selectbox("Notation des nouveaux articles", list(ARTICLE_MODES), format_func=ARTICLE_MODES.get, key="mode")
+    flat = st.session_state.mode == "flat"
+    labels_scoring = {"thresholds": {k.removeprefix("th_"): st.session_state[k] for k in st.session_state if str(k).startswith("th_")}}
+    st.caption("Cochez les critères retenus par le règlement du concours.")
+    scoring_points, enabled = {}, []
     for c in CRITERIA:
+        if (flat and c in ("article_long", "article_short")) or (not flat and c in ("article_created", "article_translated")):
+            scoring_points[c] = st.session_state[f"pts_{c}"]
+            continue
+        label = criterion_label(c, labels_scoring)
+        on = st.checkbox(label, key=f"en_{c}")
         scoring_points[c] = st.number_input(
-            criterion_label(c, {"thresholds": {
-                "article_long_min_chars": st.session_state["th_article_long_min_chars"],
-                "article_short_min_chars": st.session_state["th_article_short_min_chars"],
-            }}),
-            min_value=0,
-            max_value=1000,
-            step=1,
-            key=f"pts_{c}",
+            f"Points : {CRITERION_SHORT[c]}", min_value=0, max_value=1000, step=1, key=f"pts_{c}",
+            label_visibility="collapsed", disabled=not on,
         )
-    col_a, col_b = st.columns(2)
-    long_min = col_a.number_input(
-        "Article long (car.)", min_value=0, step=100, key="th_article_long_min_chars",
-    )
-    short_min = col_b.number_input(
-        "Article court (car.)", min_value=0, step=100, key="th_article_short_min_chars",
-    )
+        if on:
+            enabled.append(c)
+    if flat:
+        st.number_input("Minimum pour un article créé ou traduit (car.)", min_value=0, step=100, key="th_article_created_min_chars")
+    else:
+        col_a, col_b = st.columns(2)
+        col_a.number_input("Article long (car.)", min_value=0, step=100, key="th_article_long_min_chars")
+        col_b.number_input("Article court (car.)", min_value=0, step=100, key="th_article_short_min_chars")
+    if "article_edited" in enabled:
+        st.number_input("Minimum ajouté pour un article amélioré (car.)", min_value=0, step=100, key="th_article_improved_min_chars")
+    long_min = st.session_state.th_article_long_min_chars
+    short_min = st.session_state.th_article_short_min_chars
     st.selectbox(
         "Pages créées à plusieurs",
         list(COAUTHOR_RULES),
@@ -207,15 +235,22 @@ with st.sidebar:
     )
     with st.expander("Plafonds par participant"):
         st.caption("Limite les points qu’un participant peut obtenir sur un critère (0 = aucun plafond).")
-        caps = {c: st.number_input(CRITERION_SHORT[c], min_value=0, step=10, key=f"cap_{c}") for c in CRITERIA}
+        caps = {c: st.number_input(CRITERION_SHORT[c], min_value=0, step=10, key=f"cap_{c}") for c in CRITERIA if c in enabled}
     st.button("Rétablir les valeurs du modèle", on_click=reset_scoring, width="stretch")
 
 scoring = merge_scoring(DEFAULT_SCORING, {
     "points": scoring_points,
-    "thresholds": {"article_long_min_chars": int(long_min), "article_short_min_chars": int(short_min)},
-    "rules": {"coauthors": st.session_state.rule_coauthors, "caps": {c: v for c, v in caps.items() if v > 0}},
+    "thresholds": {k: int(st.session_state[f"th_{k}"]) for k in DEFAULT_SCORING["thresholds"]},
+    "rules": {
+        "article_mode": st.session_state.mode,
+        "enabled": enabled + [c for c in CRITERIA if c not in enabled and st.session_state.get(f"en_{c}") and c in (
+            ("article_long", "article_short") if flat else ("article_created", "article_translated"))],
+        "coauthors": st.session_state.rule_coauthors,
+        "caps": {c: v for c, v in caps.items() if v > 0},
+    },
 })
-scoring_valid = short_min < long_min
+scoring_valid = flat or short_min < long_min
+SHOWN = shown_criteria(scoring)
 
 # --------------------------------------------------------------------------- en-tête
 
@@ -340,7 +375,7 @@ if notices:
 
 legend = "".join(
     f'<span style="--c:{COLORS[c]}">{CRITERION_SHORT[c]} ({scoring["points"][c]} pt{"s" if scoring["points"][c] > 1 else ""})</span>'
-    for c in CRITERIA
+    for c in SHOWN
 )
 st.markdown(f'<div class="wj-legend">{legend}</div>', unsafe_allow_html=True)
 
@@ -353,7 +388,7 @@ if result.warnings:
 
 labels = [f"{p.rank if p.rank else 'H.C.'}. {p.username}" for p in result.participants]
 fig = go.Figure()
-for c in CRITERIA:
+for c in SHOWN:
     fig.add_bar(
         y=labels, x=[p.points[c] for p in result.participants], orientation="h",
         name=CRITERION_SHORT[c], marker_color=COLORS[c],
@@ -369,7 +404,7 @@ st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 table = pd.DataFrame([
     {"Rang": p.rank if p.rank else "H.C.", "Contributeur": p.username,
-     **{CRITERION_SHORT[c]: p.counts[c] for c in CRITERIA}, "Total": float(p.total)}
+     **{CRITERION_SHORT[c]: p.counts[c] for c in SHOWN}, "Total": float(p.total)}
     for p in result.participants
 ])
 st.dataframe(table, hide_index=True, width="stretch",
@@ -398,7 +433,7 @@ if p.context:
 st.dataframe(
     pd.DataFrame([
         {"Critère": criterion_label(c, scoring) + (" (plafonné)" if c in p.capped else ""), "Nombre": p.counts[c], "Barème": scoring["points"][c], "Points": float(p.points[c])}
-        for c in CRITERIA
+        for c in SHOWN
     ]),
     hide_index=True, width="stretch",
 )

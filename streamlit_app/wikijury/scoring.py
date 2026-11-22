@@ -19,6 +19,8 @@ from .normalize import (
 )
 
 CRITERIA = [
+    "article_created",
+    "article_translated",
     "article_long",
     "article_short",
     "article_edited",
@@ -30,9 +32,11 @@ CRITERIA = [
 ]
 
 CRITERION_SHORT = {
+    "article_created": "Article créé",
+    "article_translated": "Article traduit",
     "article_long": "Article long",
     "article_short": "Article court",
-    "article_edited": "Article modifié",
+    "article_edited": "Article amélioré",
     "reference_added": "Référence",
     "wikidata_item": "Wikidata",
     "photo_uploaded": "Photo téléversée",
@@ -43,6 +47,25 @@ CRITERION_SHORT = {
 
 def load_default_scoring() -> dict[str, Any]:
     return json.loads((SHARED_DIR / "scoring.default.json").read_text(encoding="utf-8"))
+
+
+ARTICLE_MODES = {
+    "flat": "Forfait par article (avec minimum)",
+    "tiers": "Selon la taille (deux paliers)",
+}
+
+
+def enabled_criteria(scoring: dict[str, Any]) -> list[str]:
+    """Critères actifs : tous si le barème ne précise rien."""
+    enabled = scoring.get("rules", {}).get("enabled")
+    return [c for c in CRITERIA if c in enabled] if isinstance(enabled, list) else list(CRITERIA)
+
+
+def shown_criteria(scoring: dict[str, Any]) -> list[str]:
+    """Critères actifs et pertinents pour le mode de notation des articles (affichage, export)."""
+    flat = scoring.get("rules", {}).get("article_mode", "tiers") == "flat"
+    hidden = ("article_long", "article_short") if flat else ("article_created", "article_translated")
+    return [c for c in enabled_criteria(scoring) if c not in hidden]
 
 
 COAUTHOR_RULES = {
@@ -76,14 +99,20 @@ def _fmt(n: int) -> str:
 def criterion_label(criterion: str, scoring: dict[str, Any]) -> str:
     long_min = scoring["thresholds"]["article_long_min_chars"]
     short_min = scoring["thresholds"]["article_short_min_chars"]
+    created = scoring["thresholds"].get("article_created_min_chars", 0)
+    improved = scoring["thresholds"].get("article_improved_min_chars", 0)
     return {
+        "article_created": f"Article créé ({_fmt(created)} caractères minimum)" if created > 0 else "Article créé",
+        "article_translated": f"Article traduit ({_fmt(created)} caractères minimum)" if created > 0 else "Article traduit",
         "article_long": f"Article créé de {_fmt(long_min)} caractères ou plus",
         "article_short": (
             f"Article créé de moins de {_fmt(long_min)} caractères"
             if short_min <= 1
             else f"Article créé de {_fmt(short_min)} à {_fmt(long_min - 1)} caractères"
         ),
-        "article_edited": "Article existant modifié",
+        "article_edited": (
+            f"Article amélioré ({_fmt(improved)} caractères ajoutés minimum)" if improved > 0 else "Article existant modifié"
+        ),
         "reference_added": "Référence ajoutée dans un article existant",
         "wikidata_item": "Élément Wikidata créé",
         "photo_uploaded": "Photo téléversée (utilisée ou non)",
@@ -123,12 +152,25 @@ class Result:
 _QID = re.compile(r"^Q\d+$")
 
 
-def _article_status(chars: int, thresholds: dict[str, int]) -> str:
-    if chars >= thresholds["article_long_min_chars"]:
+def _article_status(chars: int, scoring: dict[str, Any], translated: bool = False) -> str:
+    """Statut d'un nouvel article selon le mode de notation du barème."""
+    t = scoring["thresholds"]
+    if scoring.get("rules", {}).get("article_mode", "tiers") == "flat":
+        minimum = t.get("article_created_min_chars", 0)
+        if minimum > 0 and chars < minimum:
+            return "too_short"
+        return "article_translated" if translated and "article_translated" in enabled_criteria(scoring) else "article_created"
+    if chars >= t["article_long_min_chars"]:
         return "article_long"
-    if chars >= thresholds["article_short_min_chars"]:
+    if chars >= t["article_short_min_chars"]:
         return "article_short"
     return "too_short"
+
+
+def _edit_status(chars: int, scoring: dict[str, Any]) -> str:
+    """Un article existant est « amélioré » s'il atteint le minimum de caractères ajoutés."""
+    minimum = scoring["thresholds"].get("article_improved_min_chars", 0)
+    return "edit_too_small" if minimum > 0 and chars < minimum else "article_edited"
 
 
 def compute_ranking(
@@ -144,6 +186,26 @@ def compute_ranking(
     excluded_wikis = {str(w).lower() for w in rules.get("excluded_wikis", [])}
     coauthor_rule = rules.get("coauthors", "split")
     has_uploads = any(d.kind == "uploads" for d in datasets)
+
+    # Liste des traductions : elle ne fait que requalifier des créations de la campagne.
+    translations: dict[str, dict[str, Any]] = {}
+    for ds in datasets:
+        if ds.kind != "translations":
+            continue
+        for index, row in enumerate(ds.rows):
+            title = normalize_title(row.get(ds.mapping["title"]) if ds.mapping.get("title") else "")
+            if not title:
+                continue
+            wiki = str(row.get(ds.mapping["wiki"]) or "").strip().lower() if ds.mapping.get("wiki") else ""
+            translations[f"{wiki}|{title}"] = {"title": title, "wiki": wiki, "source": ds.source, "line": index + 2, "matched": False}
+
+    def is_translated(title: str, wiki: str = "") -> bool:
+        hit = translations.get(f"{wiki}|{title}") or translations.get(f"|{title}")
+        if hit is None and not wiki:
+            hit = next((t for t in translations.values() if t["title"] == title), None)
+        if hit is not None:
+            hit["matched"] = True
+        return hit is not None
 
     def participant(username: str) -> Participant:
         return participants.setdefault(username, Participant(username))
@@ -211,9 +273,11 @@ def compute_ranking(
                         for u in users:
                             participant(u).evidence.append({"type": "edit", "status": "wiki_excluded", "label": title, "wiki": wiki, "source": ds.source, "share": 1})
                         continue
+                    chars = parse_count(get(row, "characters"))
+                    status = _edit_status(chars, scoring)
                     for u in users:
                         participant(u).evidence.append({
-                            "type": "edit", "status": "article_edited", "label": title, "wiki": wiki, "source": ds.source,
+                            "type": "edit", "status": status, "label": title, "wiki": wiki, "chars": chars, "source": ds.source,
                             "share": 1, "coauthors": users if len(users) > 1 else None,
                         })
                     refs = max(0, parse_count(get(row, "references"))) if mapping.get("references") else 0
@@ -227,15 +291,16 @@ def compute_ranking(
                     continue
                 if is_article:
                     chars = parse_count(get(row, "characters"))
-                    status = "wiki_excluded" if wiki in excluded_wikis else _article_status(chars, scoring["thresholds"])
-                    credit(users, {"type": "article", "status": status, "label": title, "wiki": wiki, "chars": chars, "source": ds.source})
+                    translated = is_translated(title, wiki)
+                    status = "wiki_excluded" if wiki in excluded_wikis else _article_status(chars, scoring, translated)
+                    credit(users, {"type": "article", "status": status, "label": title, "wiki": wiki, "chars": chars, "translated": translated, "source": ds.source})
                 elif is_item:
                     credit(users, {"type": "wikidata", "status": "wikidata_item", "label": normalize_item(title), "source": ds.source})
                 else:
                     credit(users, {"type": "upload", "status": "photo_usage_unknown", "label": title, "source": ds.source})
                 continue
 
-            if ds.kind == "dashboard_summary":
+            if ds.kind in ("dashboard_summary", "translations"):
                 continue
 
             username = normalize_username(get(row, "username"))
@@ -264,10 +329,11 @@ def compute_ranking(
                         warn("invalid_value", ds.source, line, f"Valeur « nouvel article » illisible pour « {title} » : considéré comme non créé.")
                     is_new = parsed is True
                 chars = parse_count(get(row, "characters"))
+                translated = (bool(mapping.get("translated")) and parse_bool(get(row, "translated")) is True) or is_translated(title)
                 if is_new:
-                    p.evidence.append({"type": "article", "status": _article_status(chars, scoring["thresholds"]), "label": title, "chars": chars, "source": ds.source, "share": 1})
+                    p.evidence.append({"type": "article", "status": _article_status(chars, scoring, translated), "label": title, "chars": chars, "translated": translated, "source": ds.source, "share": 1})
                 else:
-                    p.evidence.append({"type": "edit", "status": "article_edited", "label": title, "source": ds.source, "share": 1})
+                    p.evidence.append({"type": "edit", "status": _edit_status(chars, scoring), "label": title, "chars": chars, "source": ds.source, "share": 1})
                 continue
 
             if ds.kind == "uploads":
@@ -311,6 +377,11 @@ def compute_ranking(
                     continue
                 p.evidence.append({"type": "existing_photo", "status": "photo_existing_used", "label": file, "article": article, "source": ds.source, "share": 1})
 
+    for t in translations.values():
+        if not t["matched"]:
+            warn("not_in_campaign", t["source"], t["line"], f"« {t['title']} » figure dans la liste des traductions mais pas parmi les créations de la campagne : ignoré.")
+
+    active = set(enabled_criteria(scoring))
     for p in participants.values():
         counts = {c: 0 for c in CRITERIA}
         raw = {c: 0.0 for c in CRITERIA}
@@ -319,7 +390,8 @@ def compute_ranking(
                 continue
             quantity = e.get("quantity", 1)
             counts[e["status"]] += quantity
-            raw[e["status"]] += float(scoring["points"].get(e["status"], 0) or 0) * e["share"] * quantity
+            if e["status"] in active:
+                raw[e["status"]] += float(scoring["points"].get(e["status"], 0) or 0) * e["share"] * quantity
         p.counts = counts
         caps = rules.get("caps", {}) or {}
         p.points, p.capped = {}, []

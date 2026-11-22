@@ -9,7 +9,7 @@ import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
 import presetsSpec from '../../shared/presets.json';
 import { detectKind, mapColumns, missingFields } from './engine/columns.js';
-import { COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, mergeScoring, wikisInData } from './engine/scoring.js';
+import { ARTICLE_MODES, COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, enabledCriteria, mergeScoring, shownCriteria, wikisInData } from './engine/scoring.js';
 import { normalizeUsername } from './engine/normalize.js';
 import { download, parseCsvText, parseFile, rankingToCsv, slugify } from './io.js';
 import { SAMPLE_FILES } from './sample.js';
@@ -80,6 +80,7 @@ function h(tag, attrs = {}, ...children) {
 }
 
 const isScoringValid = () =>
+  state.scoring.rules.article_mode === 'flat' ||
   state.scoring.thresholds.article_short_min_chars < state.scoring.thresholds.article_long_min_chars;
 
 /* ---------------------------------------------------------------- calcul */
@@ -197,7 +198,7 @@ function fileItem(file) {
   else if (!file.kind) status = h('p', { class: 'file-status is-muted', text: 'Fichier ignoré.' });
   else if (missing.length) status = h('p', { class: 'file-status is-warn', text: `${plural(missing.length, 'colonne', 'colonnes')} à associer avant le calcul.` });
   else {
-    const note = file.kind === 'editors' ? 'sert de liste des participants' : 'prises en compte';
+    const note = { editors: 'sert de liste des participants', translations: 'sert à repérer les traductions' }[file.kind] ?? 'prises en compte';
     status = h('p', { class: 'file-status is-ok', text: `${plural(file.rows.length, 'ligne', 'lignes')}, ${note}.` });
   }
 
@@ -257,14 +258,28 @@ let scoringUi = null;
 
 function renderScoring() {
   if (!scoringUi) scoringUi = buildScoring();
+  const sc = state.scoring;
+  const flat = sc.rules.article_mode === 'flat';
+  const enabled = new Set(enabledCriteria(sc));
   for (const c of CRITERIA) {
-    scoringUi.labels[c].textContent = criterionLabel(c, state.scoring);
-    if (document.activeElement !== scoringUi.points[c]) scoringUi.points[c].value = String(state.scoring.points[c]);
+    const on = enabled.has(c);
+    scoringUi.labels[c].textContent = criterionLabel(c, sc);
+    scoringUi.toggles[c].checked = on;
+    scoringUi.points[c].disabled = !on;
+    scoringUi.rows[c].classList.toggle('is-off', !on);
+    scoringUi.rows[c].hidden = flat ? ['article_long', 'article_short'].includes(c) : ['article_created', 'article_translated'].includes(c);
+    if (document.activeElement !== scoringUi.points[c]) scoringUi.points[c].value = String(sc.points[c]);
   }
+  scoringUi.mode.value = sc.rules.article_mode;
+  scoringUi.thresholdRows.article_created_min_chars.hidden = !flat;
+  scoringUi.thresholdRows.article_long_min_chars.hidden = flat;
+  scoringUi.thresholdRows.article_short_min_chars.hidden = flat;
+  scoringUi.thresholdRows.article_improved_min_chars.hidden = !enabled.has('article_edited');
   const valid = isScoringValid();
   for (const [key, input] of Object.entries(scoringUi.thresholds)) {
-    if (document.activeElement !== input) input.value = String(state.scoring.thresholds[key]);
-    if (valid) {
+    if (document.activeElement !== input) input.value = String(sc.thresholds[key] ?? 0);
+    const tierField = key === 'article_long_min_chars' || key === 'article_short_min_chars';
+    if (valid || !tierField) {
       input.removeAttribute('aria-invalid');
       input.removeAttribute('aria-describedby');
     } else {
@@ -273,14 +288,17 @@ function renderScoring() {
     }
   }
   scoringUi.error.hidden = valid;
-  scoringUi.coauthors.value = state.scoring.rules.coauthors;
+  scoringUi.coauthors.value = sc.rules.coauthors;
   scoringUi.preset.value = state.preset;
+  const preset = presetsSpec.presets.find((x) => x.id === state.preset);
+  scoringUi.presetHelp.textContent = preset?.description ?? '';
   for (const c of CRITERIA) {
-    const cap = state.scoring.rules.caps?.[c];
+    const cap = sc.rules.caps?.[c];
     if (document.activeElement !== scoringUi.caps[c]) scoringUi.caps[c].value = cap ? String(cap) : '';
     scoringUi.capLabels[c].textContent = CRITERION_SHORT[c];
+    scoringUi.capRows[c].hidden = !shownCriteria(sc).includes(c);
   }
-  const activeCaps = CRITERIA.filter((c) => Number(state.scoring.rules.caps?.[c]) > 0).length;
+  const activeCaps = shownCriteria(sc).filter((c) => Number(sc.rules.caps?.[c]) > 0).length;
   scoringUi.capsSummary.textContent = activeCaps ? `Plafonds par participant (${activeCaps} actif${activeCaps > 1 ? 's' : ''})` : 'Plafonds par participant';
   renderWikis();
 }
@@ -316,12 +334,23 @@ function renderWikis() {
 }
 
 function buildScoring() {
-  const ui = { labels: {}, points: {}, thresholds: {}, error: null, caps: {}, capLabels: {} };
+  const ui = { labels: {}, points: {}, toggles: {}, rows: {}, thresholds: {}, thresholdRows: {}, error: null, caps: {}, capLabels: {}, capRows: {} };
   ui.preset = h('select', {
     id: 'preset',
     class: 'select select-sm',
     onchange: (e) => applyPreset(e.target.value),
   }, ...presetsSpec.presets.map((x) => h('option', { value: x.id, text: x.label })));
+  ui.presetHelp = h('p', { class: 'rules-help' });
+  ui.mode = h('select', {
+    id: 'article-mode',
+    class: 'select select-sm',
+    onchange: (e) => {
+      state.scoring.rules.article_mode = e.target.value;
+      persist();
+      recompute();
+    },
+  }, ...Object.entries(ARTICLE_MODES).map(([value, text]) => h('option', { value, text })));
+
   const capRows = CRITERIA.map((c) => {
     const id = `cap-${c}`;
     ui.capLabels[c] = h('label', { for: id, class: 'score-label' });
@@ -342,10 +371,11 @@ function buildScoring() {
         recompute();
       },
     });
-    return h('div', { class: 'score-row' },
+    ui.capRows[c] = h('div', { class: 'score-row' },
       h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
       ui.capLabels[c],
       h('span', { class: 'score-input is-wide' }, ui.caps[c], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'pts max' })));
+    return ui.capRows[c];
   });
   ui.capsSummary = h('summary', { class: 'rules-label' });
   ui.capsBox = h('details', { class: 'caps' },
@@ -362,8 +392,16 @@ function buildScoring() {
     },
   }, ...Object.entries(COAUTHOR_RULES).map(([value, text]) => h('option', { value, text })));
   ui.wikis = h('fieldset', { class: 'wikis', hidden: true });
+
   const pointsRows = CRITERIA.map((c) => {
     const id = `pts-${c}`;
+    ui.toggles[c] = h('input', {
+      type: 'checkbox',
+      id: `en-${c}`,
+      class: 'toggle',
+      'aria-label': `Activer : ${CRITERION_SHORT[c]}`,
+      onchange: (e) => toggleCriterion(c, e.target.checked),
+    });
     ui.labels[c] = h('label', { for: id, class: 'score-label' });
     ui.points[c] = h('input', {
       id,
@@ -374,10 +412,12 @@ function buildScoring() {
       step: '1',
       onchange: (e) => updatePoints(c, e.target),
     });
-    return h('div', { class: 'score-row' },
+    ui.rows[c] = h('div', { class: 'score-row has-toggle' },
+      ui.toggles[c],
       h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
       ui.labels[c],
       h('span', { class: 'score-input' }, ui.points[c], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'pt' })));
+    return ui.rows[c];
   });
 
   const threshold = (key, label) => {
@@ -395,9 +435,10 @@ function buildScoring() {
         recompute();
       },
     });
-    return h('div', { class: 'threshold' },
+    ui.thresholdRows[key] = h('div', { class: 'threshold' },
       h('label', { for: id, text: label }),
       h('span', { class: 'score-input is-wide' }, ui.thresholds[key], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'car.' })));
+    return ui.thresholdRows[key];
   };
 
   ui.error = h('p', {
@@ -408,12 +449,21 @@ function buildScoring() {
     text: 'Le seuil de l’article court doit être inférieur à celui de l’article long. Le classement affiché reste celui du dernier barème valide.',
   });
 
-  mount($('[data-scoring]'), 
-    h('div', { class: 'preset' }, h('label', { for: 'preset', class: 'rules-label', text: 'Modèle de barème' }), ui.preset),
+  mount($('[data-scoring]'),
+    h('div', { class: 'preset' },
+      h('label', { for: 'preset', class: 'rules-label', text: 'Type de campagne' }),
+      ui.preset,
+      ui.presetHelp),
+    h('div', { class: 'preset' },
+      h('label', { for: 'article-mode', class: 'rules-label', text: 'Notation des nouveaux articles' }),
+      ui.mode),
+    h('p', { class: 'rules-help', text: 'Cochez les critères retenus par le règlement du concours.' }),
     h('div', { class: 'score-list' }, ...pointsRows),
     h('div', { class: 'thresholds' },
+      threshold('article_created_min_chars', 'Minimum pour un article créé ou traduit'),
       threshold('article_long_min_chars', 'Article long à partir de'),
       threshold('article_short_min_chars', 'Article court à partir de'),
+      threshold('article_improved_min_chars', 'Minimum ajouté pour un article amélioré'),
       ui.error),
     h('div', { class: 'rules' },
       h('label', { for: 'rule-coauthors', class: 'rules-label', text: 'Pages créées à plusieurs' }),
@@ -423,6 +473,15 @@ function buildScoring() {
       ui.capsBox),
   );
   return ui;
+}
+
+function toggleCriterion(criterion, on) {
+  const set = new Set(enabledCriteria(state.scoring));
+  if (on) set.add(criterion);
+  else set.delete(criterion);
+  state.scoring.rules.enabled = CRITERIA.filter((c) => set.has(c));
+  persist();
+  recompute();
 }
 
 function applyPreset(id) {
@@ -525,7 +584,7 @@ function emptyState() {
 
 function legend() {
   return h('ul', { class: 'legend', 'aria-label': 'Légende des critères' },
-    ...CRITERIA.map((c) => h('li', {},
+    ...shownCriteria(state.scoring).map((c) => h('li', {},
       h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
       `${CRITERION_SHORT[c]} (${plural(state.scoring.points[c], 'pt', 'pts')})`)));
 }
@@ -585,13 +644,16 @@ function describePoints(p) {
 const STATUS_TEXT = {
   article_long: () => 'Article long',
   article_short: () => 'Article court',
-  too_short: (e) => `Trop court : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.thresholds.article_short_min_chars)}`,
+  too_short: (e) => `Trop court : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.rules.article_mode === 'flat' ? state.scoring.thresholds.article_created_min_chars : state.scoring.thresholds.article_short_min_chars)}`,
   not_new: () => 'Non créé pendant la campagne',
   wiki_excluded: (e) => `${e.wiki} n’est pas retenue par le jury`,
   photo_usage_unknown: () => 'Usage inconnu : ajoutez l’export « uploads »',
   photo_uploaded: (e) => (e.usage > 0 ? `Utilisée ${plural(e.usage, 'fois', 'fois')}` : 'Non utilisée dans un article'),
   photo_uploaded_used: (e) => `Utilisée ${plural(e.usage, 'fois', 'fois')}`,
-  article_edited: () => 'Article existant modifié',
+  article_edited: (e) => (e.chars !== undefined ? `Article amélioré : ${fmt.format(e.chars)} car. ajoutés` : 'Article existant modifié'),
+  edit_too_small: (e) => `Modification sous le minimum : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.thresholds.article_improved_min_chars)}`,
+  article_created: (e) => `Article créé : ${fmt.format(e.chars)} car.`,
+  article_translated: (e) => `Article traduit : ${fmt.format(e.chars)} car.`,
   reference_added: (e) => plural(e.quantity, 'référence ajoutée', 'références ajoutées'),
   photo_unused: () => 'Non utilisée dans un article',
   wikidata_item: () => 'Élément créé',
@@ -617,6 +679,11 @@ function evidenceLink(e) {
   return h('span', { text: e.label });
 }
 
+/** Pièce d'un critère que le barème n'a pas retenu. */
+function disabledText(e) {
+  return CRITERIA.includes(e.status) && !enabledCriteria(state.scoring).includes(e.status) ? 'Critère non retenu par le barème' : '';
+}
+
 function coauthorText(e, username) {
   if (!e.coauthors) return '';
   const others = e.coauthors.filter((u) => u !== username);
@@ -633,7 +700,7 @@ function openSheet(username, opener) {
   if (!p) return;
   sheetOpener = opener;
   const dialog = $('[data-sheet]');
-  const pointsRows = CRITERIA.map((c) => h('tr', {},
+  const pointsRows = shownCriteria(state.scoring).map((c) => h('tr', {},
     h('th', { scope: 'row' }, h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }), criterionLabel(c, state.scoring)),
     h('td', { text: fmt.format(p.counts[c]) }),
     h('td', { text: `× ${state.scoring.points[c]}` }),
@@ -655,7 +722,7 @@ function openSheet(username, opener) {
         return h('li', { class: counted ? 'is-counted' : 'is-ignored' },
           h('span', { class: `swatch ${swatch}`, 'aria-hidden': 'true' }),
           h('span', { class: 'ev-label' }, evidenceLink(e)),
-          h('span', { class: 'ev-status', text: [STATUS_TEXT[e.status]?.(e), coauthorText(e, p.username)].filter(Boolean).join('. ') }),
+          h('span', { class: 'ev-status', text: [STATUS_TEXT[e.status]?.(e), e.translated && e.status !== 'article_translated' ? 'Dans la liste des traductions' : '', disabledText(e), coauthorText(e, p.username)].filter(Boolean).join('. ') }),
           h('span', { class: 'ev-points', text: counted ? `+${fmt.format(pts)}` : '0' }));
       })),
       items.length > MAX_ITEMS ? h('p', { class: 'is-muted', text: `… et ${fmt.format(items.length - MAX_ITEMS)} autres, détaillées dans l’export CSV de vos fichiers source.` }) : null);
@@ -706,15 +773,15 @@ function renderPrint() {
     h('h1', { text: state.campaign || 'Classement du concours' }),
     h('p', { text: `Procès-verbal établi le ${date} avec WikiJury.` }),
     h('h2', { text: 'Barème appliqué' }),
-    h('table', {}, h('tbody', {}, ...CRITERIA.map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
+    h('table', {}, h('tbody', {}, ...shownCriteria(state.scoring).map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
     h('p', { text: `Modèle : ${presetsSpec.presets.find((x) => x.id === state.preset)?.label ?? 'personnalisé'}. Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.${state.scoring.rules.excluded_wikis.length ? ` Wikis non retenus : ${state.scoring.rules.excluded_wikis.join(', ')}.` : ''}${Object.keys(state.scoring.rules.caps ?? {}).length ? ` Plafonds par participant : ${Object.entries(state.scoring.rules.caps).map(([c, v]) => `${CRITERION_SHORT[c]} ${v} pts`).join(', ')}.` : ''}` }),
     h('h2', { text: 'Classement' }),
     h('table', {},
-      h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...CRITERIA.map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),
+      h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...shownCriteria(state.scoring).map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),
       h('tbody', {}, ...participants.map((p) => h('tr', {},
         h('td', { text: p.excluded ? 'H.C.' : String(p.rank) }),
         h('td', { text: p.username }),
-        ...CRITERIA.map((c) => h('td', { text: String(p.counts[c]) })),
+        ...shownCriteria(state.scoring).map((c) => h('td', { text: String(p.counts[c]) })),
         h('td', { text: fmt.format(p.total) }))))),
     h('p', { class: 'print-note', text: 'Les colonnes de critères indiquent le nombre de contributions retenues. H.C. : hors concours.' }),
     h('div', { class: 'signatures' }, ...[1, 2, 3].map(() => h('div', {}, h('span', { text: 'Membre du jury : nom et signature' })))),

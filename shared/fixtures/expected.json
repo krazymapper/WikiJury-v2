@@ -30,6 +30,8 @@
               "rank": 1,
               "total": 13,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 1,
                 "article_short": 1,
                 "article_edited": 0,
@@ -45,6 +47,8 @@
               "rank": 2,
               "total": 11,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 1,
                 "article_short": 0,
                 "article_edited": 1,
@@ -60,6 +64,8 @@
               "rank": 2,
               "total": 11,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 0,
                 "article_short": 0,
                 "article_edited": 0,
@@ -75,6 +81,8 @@
               "rank": 4,
               "total": 5,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 1,
                 "article_short": 0,
                 "article_edited": 0,
@@ -90,6 +98,8 @@
               "rank": 5,
               "total": 0,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 0,
                 "article_short": 0,
                 "article_edited": 0,
@@ -237,6 +247,8 @@
               "rank": 1,
               "total": 10.5,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 2,
                 "article_short": 0,
                 "article_edited": 0,
@@ -252,6 +264,8 @@
               "rank": 2,
               "total": 7,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 0,
                 "article_short": 1,
                 "article_edited": 0,
@@ -267,6 +281,8 @@
               "rank": 3,
               "total": 5.5,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 1,
                 "article_short": 0,
                 "article_edited": 1,
@@ -282,6 +298,8 @@
               "rank": 4,
               "total": 0,
               "counts": {
+                "article_created": 0,
+                "article_translated": 0,
                 "article_long": 0,
                 "article_short": 0,
                 "article_edited": 0,
@@ -418,12 +436,12 @@
           ]
         },
         {
-          "name": "modèle WSF 2026 avec plafond de 15 points sur les articles courts",
+          "name": "modèle WSF 2026 avec plafond de 15 points sur les articles créés",
           "preset": "wsf2026",
           "scoring": {
             "rules": {
               "caps": {
-                "article_short": 15
+                "article_created": 15
               }
             }
           },
@@ -443,6 +461,175 @@
               "username": "Bio Exemple",
               "rank": 3,
               "total": 13.67
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "exports Dashboard + liste des traductions",
+      "dir": "dashboard",
+      "files": {
+        "course_editors.csv": "editors",
+        "course_articles.csv": "dashboard_articles",
+        "course_uploads.csv": "uploads",
+        "course_translations.csv": "translations"
+      },
+      "warnings": {
+        "duplicate": 1,
+        "not_in_campaign": 1
+      },
+      "stats": {
+        "deleted": 2,
+        "ignored": 4
+      },
+      "scenarios": [
+        {
+          "name": "décompte par article, minimums 1 500 (créé) et 2 500 (amélioré)",
+          "preset": "edition_simple",
+          "excluded": [],
+          "scoring": {
+            "thresholds": {
+              "article_created_min_chars": 1500,
+              "article_improved_min_chars": 2500
+            },
+            "points": {
+              "article_created": 2,
+              "article_translated": 3
+            }
+          },
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 5,
+              "counts": {
+                "article_created": 1,
+                "article_translated": 1,
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 1,
+                "photo_uploaded": 1,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 3,
+              "counts": {
+                "article_created": 0,
+                "article_translated": 1,
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 2,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 2,
+              "counts": {
+                "article_created": 1,
+                "article_translated": 0,
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 1,
+                "wikidata_item": 1,
+                "photo_uploaded": 2,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0,
+              "counts": {
+                "article_created": 0,
+                "article_translated": 0,
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 0,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            }
+          ]
+        },
+        {
+          "name": "décompte par article, minimum amélioré abaissé à 1 500",
+          "preset": "edition_simple",
+          "excluded": [],
+          "scoring": {
+            "thresholds": {
+              "article_created_min_chars": 1500,
+              "article_improved_min_chars": 1500
+            },
+            "points": {
+              "article_created": 2,
+              "article_translated": 3
+            }
+          },
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 5
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 3
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 3
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        },
+        {
+          "name": "barème par taille : la liste des traductions ne change pas les points",
+          "scoring": {},
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 10.5
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 7
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 5.5
             },
             {
               "username": "Dossi Exemple",

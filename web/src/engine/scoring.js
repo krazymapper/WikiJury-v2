@@ -11,6 +11,8 @@ import {
 
 /** Critères notés, dans l'ordre d'affichage. */
 export const CRITERIA = [
+  'article_created',
+  'article_translated',
   'article_long',
   'article_short',
   'article_edited',
@@ -20,6 +22,24 @@ export const CRITERIA = [
   'photo_uploaded_used',
   'photo_existing_used',
 ];
+
+export const ARTICLE_MODES = {
+  flat: 'Forfait par article (avec minimum)',
+  tiers: 'Selon la taille (deux paliers)',
+};
+
+/** Critères actifs : tous si le barème ne précise rien. */
+export function enabledCriteria(scoring) {
+  const list = scoring.rules?.enabled;
+  return Array.isArray(list) ? CRITERIA.filter((c) => list.includes(c)) : [...CRITERIA];
+}
+
+/** Critères actifs et pertinents pour le mode de notation des articles (affichage, export). */
+export function shownCriteria(scoring) {
+  const flat = (scoring.rules?.article_mode ?? 'tiers') === 'flat';
+  const hidden = flat ? ['article_long', 'article_short'] : ['article_created', 'article_translated'];
+  return enabledCriteria(scoring).filter((c) => !hidden.includes(c));
+}
 
 export const COAUTHOR_RULES = {
   split: 'Partager les points entre co-auteurs',
@@ -40,7 +60,13 @@ const formatInt = (n) => new Intl.NumberFormat('fr-FR').format(n);
 
 export function criterionLabel(id, scoring) {
   const { article_long_min_chars: long, article_short_min_chars: short } = scoring.thresholds;
+  const created = scoring.thresholds.article_created_min_chars ?? 0;
+  const improved = scoring.thresholds.article_improved_min_chars ?? 0;
   switch (id) {
+    case 'article_created':
+      return created > 0 ? `Article créé (${formatInt(created)} caractères minimum)` : 'Article créé';
+    case 'article_translated':
+      return created > 0 ? `Article traduit (${formatInt(created)} caractères minimum)` : 'Article traduit';
     case 'article_long':
       return `Article créé de ${formatInt(long)} caractères ou plus`;
     case 'article_short':
@@ -48,7 +74,7 @@ export function criterionLabel(id, scoring) {
         ? `Article créé de moins de ${formatInt(long)} caractères`
         : `Article créé de ${formatInt(short)} à ${formatInt(long - 1)} caractères`;
     case 'article_edited':
-      return 'Article existant modifié';
+      return improved > 0 ? `Article amélioré (${formatInt(improved)} caractères ajoutés minimum)` : 'Article existant modifié';
     case 'reference_added':
       return 'Référence ajoutée dans un article existant';
     case 'wikidata_item':
@@ -66,9 +92,11 @@ export function criterionLabel(id, scoring) {
 
 /** Libellés courts pour la légende et les colonnes étroites. */
 export const CRITERION_SHORT = {
+  article_created: 'Article créé',
+  article_translated: 'Article traduit',
   article_long: 'Article long',
   article_short: 'Article court',
-  article_edited: 'Article modifié',
+  article_edited: 'Article amélioré',
   reference_added: 'Référence',
   wikidata_item: 'Wikidata',
   photo_uploaded: 'Photo téléversée',
@@ -81,10 +109,23 @@ export const round2 = (x) => Math.floor(x * 100 + 0.5) / 100;
 
 const emptyCounts = () => Object.fromEntries(CRITERIA.map((c) => [c, 0]));
 
-function articleStatus(chars, thresholds) {
-  if (chars >= thresholds.article_long_min_chars) return 'article_long';
-  if (chars >= thresholds.article_short_min_chars) return 'article_short';
+/** Statut d'un nouvel article selon le mode de notation du barème. */
+function articleStatus(chars, scoring, translated = false) {
+  const t = scoring.thresholds;
+  if ((scoring.rules.article_mode ?? 'tiers') === 'flat') {
+    const min = t.article_created_min_chars ?? 0;
+    if (min > 0 && chars < min) return 'too_short';
+    return translated && enabledCriteria(scoring).includes('article_translated') ? 'article_translated' : 'article_created';
+  }
+  if (chars >= t.article_long_min_chars) return 'article_long';
+  if (chars >= t.article_short_min_chars) return 'article_short';
   return 'too_short';
+}
+
+/** Un article existant est « amélioré » s'il atteint le minimum de caractères ajoutés. */
+function editStatus(chars, scoring) {
+  const min = scoring.thresholds.article_improved_min_chars ?? 0;
+  return min > 0 && chars < min ? 'edit_too_small' : 'article_edited';
 }
 
 /**
@@ -101,6 +142,26 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
   const excludedWikis = new Set((scoring.rules.excluded_wikis ?? []).map((w) => String(w).toLowerCase()));
   const coauthorRule = scoring.rules.coauthors ?? 'split';
   const hasUploads = datasets.some((d) => d.kind === 'uploads');
+
+  // Liste des traductions : elle ne fait que requalifier des créations de la campagne.
+  const translations = new Map();
+  for (const { kind, mapping, rows, source } of datasets) {
+    if (kind !== 'translations') continue;
+    rows.forEach((row, index) => {
+      const title = normalizeTitle(mapping.title ? row[mapping.title] : '');
+      if (!title) return;
+      const wiki = mapping.wiki ? String(row[mapping.wiki] ?? '').trim().toLowerCase() : '';
+      translations.set(`${wiki}|${title}`, { title, wiki, source, line: index + 2, matched: false });
+    });
+  }
+  const isTranslated = (title, wiki = '') => {
+    const hit =
+      translations.get(`${wiki}|${title}`) ??
+      translations.get(`|${title}`) ??
+      (wiki ? undefined : [...translations.values()].find((t) => t.title === title));
+    if (hit) hit.matched = true;
+    return Boolean(hit);
+  };
 
   const participant = (username) => {
     if (!participants.has(username)) {
@@ -170,8 +231,10 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
             for (const u of users) participant(u).evidence.push({ type: 'edit', status: 'wiki_excluded', label: title, wiki, source, share: 1 });
             return;
           }
+          const chars = parseCount(get(row, 'characters'));
+          const status = editStatus(chars, scoring);
           for (const u of users) {
-            participant(u).evidence.push({ type: 'edit', status: 'article_edited', label: title, wiki, source, share: 1, coauthors: users.length > 1 ? users : undefined });
+            participant(u).evidence.push({ type: 'edit', status, label: title, wiki, chars, source, share: 1, coauthors: users.length > 1 ? users : undefined });
           }
           const refs = mapping.references ? Math.max(0, parseCount(get(row, 'references'))) : 0;
           if (refs > 0) credit(users, { type: 'reference', status: 'reference_added', label: title, wiki, quantity: refs, source });
@@ -185,8 +248,9 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
 
         if (isArticle) {
           const chars = parseCount(get(row, 'characters'));
-          const status = excludedWikis.has(wiki) ? 'wiki_excluded' : articleStatus(chars, scoring.thresholds);
-          credit(users, { type: 'article', status, label: title, wiki, chars, source });
+          const translated = isTranslated(title, wiki);
+          const status = excludedWikis.has(wiki) ? 'wiki_excluded' : articleStatus(chars, scoring, translated);
+          credit(users, { type: 'article', status, label: title, wiki, chars, translated, source });
         } else if (isItem) {
           credit(users, { type: 'wikidata', status: 'wikidata_item', label: normalizeItem(title), source });
         } else {
@@ -195,7 +259,7 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
         return;
       }
 
-      if (columnsUnusable(kind)) return;
+      if (columnsUnusable(kind) || kind === 'translations') return;
 
       const username = normalizeUsername(get(row, 'username'));
       if (!username) {
@@ -225,8 +289,9 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           isNew = parsed === true;
         }
         const chars = parseCount(get(row, 'characters'));
-        if (isNew) p.evidence.push({ type: 'article', status: articleStatus(chars, scoring.thresholds), label: title, chars, source, share: 1 });
-        else p.evidence.push({ type: 'edit', status: 'article_edited', label: title, source, share: 1 });
+        const translated = (mapping.translated && parseBool(get(row, 'translated')) === true) || isTranslated(title);
+        if (isNew) p.evidence.push({ type: 'article', status: articleStatus(chars, scoring, translated), label: title, chars, translated, source, share: 1 });
+        else p.evidence.push({ type: 'edit', status: editStatus(chars, scoring), label: title, chars, source, share: 1 });
         return;
       }
 
@@ -276,6 +341,13 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
     });
   }
 
+  for (const t of translations.values()) {
+    if (!t.matched) {
+      warn('not_in_campaign', t.source, t.line, `« ${t.title} » figure dans la liste des traductions mais pas parmi les créations de la campagne : ignoré.`);
+    }
+  }
+
+  const active = new Set(enabledCriteria(scoring));
   const list = [...participants.values()].map((p) => {
     const counts = emptyCounts();
     const raw = emptyCounts();
@@ -283,7 +355,7 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
       if (!CRITERIA.includes(e.status) || e.share <= 0) continue;
       const quantity = e.quantity ?? 1;
       counts[e.status] += quantity;
-      raw[e.status] += (Number(scoring.points[e.status]) || 0) * e.share * quantity;
+      if (active.has(e.status)) raw[e.status] += (Number(scoring.points[e.status]) || 0) * e.share * quantity;
     }
     const caps = scoring.rules.caps ?? {};
     const capped = [];

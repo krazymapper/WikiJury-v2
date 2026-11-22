@@ -9,7 +9,7 @@ import expected from '../../shared/fixtures/expected.json';
 import { detectKind, mapColumns, missingFields } from '../src/engine/columns.js';
 import { normalizeUsername, normalizeTitle, parseBool, parseCount } from '../src/engine/normalize.js';
 import { computeRanking, mergeScoring } from '../src/engine/scoring.js';
-import { parseCsvText, rankingToCsv } from '../src/io.js';
+import { parseCsvText, parseFile, rankingToCsv } from '../src/io.js';
 
 const fixture = (path) => readFileSync(fileURLToPath(new URL(`../../shared/fixtures/${path}`, import.meta.url)), 'utf8');
 
@@ -110,9 +110,9 @@ describe('modèles et plafonds', () => {
   });
 
   it('signale les critères plafonnés', () => {
-    const scoring = mergeScoring(mergeScoring(defaultScoring, presets.presets[1].scoring), { rules: { caps: { article_short: 15 } } });
+    const scoring = mergeScoring(mergeScoring(defaultScoring, presets.presets.find((x) => x.id === 'wsf2026').scoring), { rules: { caps: { article_created: 15 } } });
     const { participants } = computeRanking(loadDatasets(expected.suites[1]), scoring);
-    expect(participants[0]).toMatchObject({ username: 'Codjo Exemple', capped: ['article_short'] });
+    expect(participants[0]).toMatchObject({ username: 'Codjo Exemple', capped: ['article_created'] });
   });
 });
 
@@ -139,5 +139,24 @@ describe('export CSV', () => {
     ], scoring);
     expect(csv.startsWith('﻿Rang;Contributeur')).toBe(true);
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+});
+
+describe('fichiers Excel', () => {
+  const asFile = (path, name) => {
+    const buf = readFileSync(fileURLToPath(new URL(`../../shared/fixtures/${path}`, import.meta.url)));
+    return { name, size: buf.length, arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
+  };
+
+  it('lit un .xls (Excel 97-2003) comme le CSV équivalent', async () => {
+    const xls = await parseFile(asFile('generic/articles.xls', 'articles.xls'));
+    const csv = parseCsvText(fixture('generic/articles.csv'));
+    expect(xls.headers).toEqual(csv.headers);
+    expect(xls.rows.map((r) => String(r.title))).toEqual(csv.rows.map((r) => r.title));
+    expect(detectKind(xls.headers, 'articles.xls', columnsSpec).kind).toBe('articles');
+  });
+
+  it('refuse les formats inconnus avec un message clair', async () => {
+    await expect(parseFile({ name: 'notes.pdf', size: 10 })).rejects.toThrow('Format non reconnu');
   });
 });

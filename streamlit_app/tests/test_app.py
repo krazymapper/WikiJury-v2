@@ -49,6 +49,28 @@ def test_wsf_preset():
     at.button[0].click().run()
     at.selectbox(key="preset").set_value("wsf2026").run()
     assert not at.exception
-    assert at.number_input(key="pts_article_short").value == 10
+    assert at.number_input(key="pts_article_created").value == 10
     # 26,67 + 18,67 + 13,67 + 0 = 59,01 (arrondis au centième par participant)
     assert any("59,01 points" in c.value for c in at.caption)
+
+
+def test_simple_count_preset_with_minimums():
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.button[0].click().run()
+    at.selectbox(key="preset").set_value("edition_simple").run()
+    assert not at.exception
+    at.number_input(key="th_article_created_min_chars").set_value(1500).run()
+    at.number_input(key="th_article_improved_min_chars").set_value(2500).run()
+    assert not at.exception
+    # Données d'exemple : Abla 2 articles (1 + 0,5) + 1 photo, Codjo 1 article, Bio 0,5 + 1 photo = 5
+    assert any("5 points" in c.value for c in at.caption)
+
+
+def test_disabled_criterion_keeps_its_value():
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.button[0].click().run()
+    at.checkbox(key="en_wikidata_item").uncheck().run()
+    assert not at.exception
+    assert at.number_input(key="pts_wikidata_item").value == 3
+    # 10,5 + 7 + 5,5 = 23 moins les points Wikidata (1 + 4 + 1) = 17
+    assert any("17 points" in c.value for c in at.caption)

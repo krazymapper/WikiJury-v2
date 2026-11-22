@@ -131,7 +131,20 @@ def test_csv_export_is_safe():
 
 def test_unsupported_format():
     with pytest.raises(ValueError):
-        read_upload("vieux.xls", b"x")
+        read_upload("notes.pdf", b"x")
+
+
+def test_xls_reads_like_csv():
+    xls_headers, xls_rows = read_upload("articles.xls", (FIXTURES / "generic" / "articles.xls").read_bytes())
+    csv_headers, csv_rows = read_upload("articles.csv", (FIXTURES / "generic" / "articles.csv").read_bytes())
+    assert xls_headers == csv_headers
+    assert [r["title"] for r in xls_rows] == [r["title"] for r in csv_rows]
+    assert detect_kind(xls_headers, "articles.xls", SPEC).kind == "articles"
+
+
+def test_xlsx_dashboard_uploads():
+    headers, rows = read_upload("course_uploads.xlsx", (FIXTURES / "dashboard" / "course_uploads.xlsx").read_bytes())
+    assert detect_kind(headers, "export.xlsx", SPEC).kind == "uploads" and len(rows) == 4
 
 
 def test_csv_with_doubled_quotes():
@@ -157,6 +170,6 @@ def test_presets_use_known_criteria():
 
 
 def test_caps_are_reported():
-    scoring = merge_scoring(merge_scoring(DEFAULT, PRESETS[1]["scoring"]), {"rules": {"caps": {"article_short": 15}}})
+    scoring = merge_scoring(merge_scoring(DEFAULT, next(p for p in PRESETS if p["id"] == "wsf2026")["scoring"]), {"rules": {"caps": {"article_created": 15}}})
     top = compute_ranking(load_datasets(SUITES[1]), scoring).participants[0]
-    assert top.username == "Codjo Exemple" and top.capped == ["article_short"]
+    assert top.username == "Codjo Exemple" and top.capped == ["article_created"]

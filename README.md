@@ -29,22 +29,28 @@ Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doi
 - un **export CSV** prêt pour Excel et un **procès-verbal imprimable** avec emplacements de signature du jury ;
 - la possibilité de classer des personnes **hors concours** (organisateurs, membres du jury).
 
-## Barèmes
+## Types de campagne
 
-Deux modèles sont proposés ; le jury peut ensuite modifier chaque valeur. Un critère à 0 point est ignoré.
+Chaque campagne a son règlement : le jury choisit un **type de campagne**, puis **coche les critères retenus** et ajuste points et minimums. Un critère décoché ne rapporte rien et disparaît du classement, de l’export et du procès-verbal.
 
-| Contribution | Standard WikiJury | Wiki for Sustainable Futures 2026 |
-|---|---|---|
-| Article créé de 4 000 caractères ou plus | 5 | 10 |
-| Article créé de 1 500 à 3 999 caractères | 3 | 10 (sans seuil minimal) |
-| Article existant modifié | 0 | 1 |
-| Référence ajoutée dans un article existant | 0 | 2 |
-| Élément Wikidata créé | 3 | 5 |
-| Photo téléversée (utilisée ou non) | 0 | 2 |
-| Bonus : photo téléversée et utilisée | 2 | 0 |
-| Photo Commons existante ajoutée à un article | 1 | 1 |
+| Type de campagne | Critères actifs au départ |
+|---|---|
+| Campagne d’édition : barème par taille | articles créés selon deux paliers de taille (5 / 3 pts), élément Wikidata (3), photo utilisée (2), photo existante réutilisée (1) |
+| Campagne d’édition : décompte par article | article créé, article traduit, article amélioré, photo utilisée dans un article : 1 point chacun |
+| Concours photo (Wiki Loves…) | toute photo téléversée (1), bonus photo utilisée (0, à activer si le règlement le prévoit) |
+| Wiki for Sustainable Futures 2026 | article créé (10), article modifié (1), référence dans un article existant (2), élément Wikidata (5), photo téléversée (2), photo existante réutilisée (1) |
 
-Les modèles sont définis dans [`shared/presets.json`](shared/presets.json) : ajouter un barème de campagne revient à ajouter une entrée dans ce fichier. Le modèle, la règle des co-auteurs, les Wikipédias retenues et les plafonds figurent dans l’export CSV et dans le procès-verbal.
+**Notation des nouveaux articles** : *forfait par article*, avec un minimum de caractères pour être éligible, ou *selon la taille*, avec deux paliers. **Article amélioré** : article existant ayant reçu au moins le minimum de caractères fixé ; à 0, toute modification compte.
+
+Les valeurs du décompte par article et du concours photo sont des points de départ neutres (1 point, aucun minimum) : fixez-les selon votre règlement. Les types de campagne sont définis dans [`shared/presets.json`](shared/presets.json) ; en ajouter un revient à ajouter une entrée dans ce fichier.
+
+### Articles traduits
+
+Les exports du Dashboard ne distinguent pas une traduction d’une création. Pour noter les traductions à part, importez une **liste des articles traduits** (CSV ou Excel, colonne titre, colonne wiki facultative). Cette liste ne fait que requalifier des articles déjà présents dans les créations de la campagne : un titre absent est signalé et ignoré. Dans un tableau maison d’articles, une colonne « traduit » (oui/non) produit le même effet.
+
+### Pourquoi pas l’API Wikimedia ?
+
+Un même contributeur participe souvent à plusieurs campagnes à la fois (Mois africain de la contribution, Mois de la contribution francophone, AfroCreatives, Wiki for Sustainable Futures, Africa Wiki Challenge, 1Lib1Ref, Wiki Loves Africa, Monuments ou Folklore…). Interroger l’API sur ses contributions mélangerait ces activités. WikiJury s’en tient donc aux fichiers de la campagne fournis par le jury : leur périmètre est celui de la campagne.
 
 ### Plafonds par participant
 
@@ -79,14 +85,15 @@ Déposez les fichiers CSV de la campagne tels quels ; leur type est reconnu auto
 
 ### Tableaux maison
 
-WikiJury accepte aussi des tableaux préparés à la main, en **CSV** (séparateur virgule, point-virgule ou tabulation) ou en **Excel .xlsx**, avec des en-têtes en français ou en anglais. Si la détection se trompe, vous pouvez corriger le type et choisir les colonnes à la main.
+WikiJury accepte aussi des tableaux préparés à la main, en **CSV** (séparateur virgule, point-virgule ou tabulation) ou en **Excel (.xlsx ou .xls)**, avec des en-têtes en français ou en anglais. Si la détection se trompe, vous pouvez corriger le type et choisir les colonnes à la main.
 
 | Type | Une ligne par… | Colonnes obligatoires | Colonnes facultatives |
 |---|---|---|---|
-| Articles créés | article | contributeur, titre, caractères ajoutés | nouvel article (oui/non) |
+| Articles créés | article | contributeur, titre, caractères ajoutés | nouvel article (oui/non), traduit (oui/non) |
 | Photos téléversées | fichier Commons | contributeur, nom du fichier, nombre d’utilisations | supprimé |
 | Éléments Wikidata créés | élément | contributeur, et soit l’identifiant (Q…), soit une quantité | |
 | Photos existantes réutilisées | photo ajoutée à un article | contributeur, nom du fichier | article |
+| Liste des articles traduits | article traduit | titre | wiki |
 | Participants | participant | contributeur | modifications, octets ajoutés, références ajoutées |
 
 La liste complète des en-têtes reconnus se trouve dans [`shared/columns.json`](shared/columns.json). Pour accepter un nouvel intitulé de colonne, il suffit de l’ajouter dans ce fichier : les deux versions l’utiliseront.

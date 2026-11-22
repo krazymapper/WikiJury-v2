@@ -7,6 +7,7 @@
     "uploads",
     "articles",
     "existing_photos",
+    "translations",
     "editors"
   ],
   "kinds": {
@@ -142,6 +143,15 @@
             "cree",
             "created",
             "creation"
+          ]
+        },
+        "translated": {
+          "required": false,
+          "aliases": [
+            "translated",
+            "traduit",
+            "traduction",
+            "translation"
           ]
         }
       }
@@ -295,6 +305,34 @@
             "page",
             "title",
             "titre"
+          ]
+        }
+      }
+    },
+    "translations": {
+      "label": "Liste des articles traduits",
+      "description": "Titres des articles créés par traduction. Seuls les articles présents dans les créations de la campagne sont pris en compte : la liste ne peut pas ajouter d'articles.",
+      "filename_hints": [
+        "tradu",
+        "translation"
+      ],
+      "fields": {
+        "title": {
+          "required": true,
+          "aliases": [
+            "title",
+            "titre",
+            "article",
+            "page",
+            "page title"
+          ]
+        },
+        "wiki": {
+          "required": false,
+          "aliases": [
+            "wiki",
+            "projet",
+            "project"
           ]
         }
       }

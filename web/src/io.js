@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { COAUTHOR_RULES, CRITERIA, CRITERION_SHORT } from './engine/scoring.js';
+import { ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, criterionLabel, shownCriteria } from './engine/scoring.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -14,7 +14,16 @@ export function parseCsvText(text) {
   return { headers, rows: result.data };
 }
 
-/** Lit un fichier déposé (CSV ou XLSX) en { headers, rows }. */
+function tableToRows(table) {
+  const [head = [], ...body] = table;
+  const headers = head.map((h) => String(h ?? '').trim());
+  const rows = body
+    .filter((r) => r.some((cell) => cell !== null && cell !== undefined && cell !== ''))
+    .map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ''])));
+  return { headers: headers.filter(Boolean), rows };
+}
+
+/** Lit un fichier déposé (CSV, XLSX ou XLS) en { headers, rows }. */
 export async function parseFile(file) {
   if (file.size > MAX_FILE_BYTES) {
     throw new Error(`Fichier trop volumineux (${Math.round(file.size / 1e6)} Mo). La limite est de 25 Mo.`);
@@ -22,17 +31,17 @@ export async function parseFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (ext === 'xlsx') {
     const { readSheet } = await import('read-excel-file/browser');
-    const table = await readSheet(file);
-    const [head = [], ...body] = table;
-    const headers = head.map((h) => String(h ?? '').trim());
-    const rows = body
-      .filter((r) => r.some((cell) => cell !== null && cell !== ''))
-      .map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ''])));
-    return { headers: headers.filter(Boolean), rows };
+    return tableToRows(await readSheet(file));
+  }
+  if (ext === 'xls') {
+    // Excel 97-2003 : bibliothèque chargée seulement quand un tel fichier est déposé.
+    const XLSX = await import('@e965/xlsx');
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    return tableToRows(XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' }));
   }
   if (['csv', 'tsv', 'txt'].includes(ext)) return parseCsvText(await file.text());
-  if (ext === 'xls') throw new Error('Le format .xls (Excel 97-2003) n’est pas pris en charge. Enregistrez le fichier en .xlsx ou en CSV.');
-  throw new Error('Format non reconnu. Importez un fichier CSV ou Excel (.xlsx).');
+  throw new Error('Format non reconnu. Importez un fichier CSV ou Excel (.xlsx ou .xls).');
 }
 
 /** Neutralise les formules lors d'une ouverture dans un tableur (injection CSV). */
@@ -45,6 +54,7 @@ function cell(value) {
 
 /** Export du classement, séparateur « ; » et BOM pour Excel en français. */
 export function rankingToCsv(participants, scoring) {
+  const CRITERIA = shownCriteria(scoring);
   const header = [
     'Rang',
     'Contributeur',
@@ -61,9 +71,8 @@ export function rankingToCsv(participants, scoring) {
   ]);
   const scoringLine = [
     '# Barème',
-    ...CRITERIA.map((c) => `${CRITERION_SHORT[c]} = ${scoring.points[c]} pt`),
-    `Article long ≥ ${scoring.thresholds.article_long_min_chars} car.`,
-    `Article court ≥ ${scoring.thresholds.article_short_min_chars} car.`,
+    ...CRITERIA.map((c) => `${criterionLabel(c, scoring)} = ${scoring.points[c]} pt`),
+    `Articles : ${ARTICLE_MODES[scoring.rules.article_mode ?? 'tiers']}`,
     `Co-auteurs : ${COAUTHOR_RULES[scoring.rules.coauthors]}`,
     ...(scoring.rules.excluded_wikis.length ? [`Wikis non retenus : ${scoring.rules.excluded_wikis.join(', ')}`] : []),
     ...Object.entries(scoring.rules.caps ?? {}).map(([c, v]) => `Plafond ${CRITERION_SHORT[c]} = ${v} pts`),

@@ -2,9 +2,13 @@
   "version": 1,
   "thresholds": {
     "article_long_min_chars": 4000,
-    "article_short_min_chars": 1500
+    "article_short_min_chars": 1500,
+    "article_created_min_chars": 0,
+    "article_improved_min_chars": 0
   },
   "points": {
+    "article_created": 0,
+    "article_translated": 0,
     "article_long": 5,
     "article_short": 3,
     "article_edited": 0,
@@ -15,6 +19,14 @@
     "photo_existing_used": 1
   },
   "rules": {
+    "article_mode": "tiers",
+    "enabled": [
+      "article_long",
+      "article_short",
+      "wikidata_item",
+      "photo_uploaded_used",
+      "photo_existing_used"
+    ],
     "coauthors": "split",
     "excluded_wikis": [],
     "caps": {}

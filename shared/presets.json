@@ -1,27 +1,73 @@
 {
-  "_comment": "Modèles de barème proposés dans l'interface. Chaque modèle complète scoring.default.json ; le jury peut ensuite modifier chaque valeur.",
+  "_comment": "Types de campagne proposés dans l'interface. Chaque modèle complète scoring.default.json ; « enabled » liste les critères actifs. Le jury peut ensuite modifier chaque valeur.",
   "presets": [
     {
       "id": "standard",
-      "label": "Barème standard WikiJury",
+      "label": "Campagne d'édition : barème par taille",
+      "description": "Points selon la taille des nouveaux articles (deux paliers), éléments Wikidata et photos utilisées.",
       "scoring": {}
+    },
+    {
+      "id": "edition_simple",
+      "label": "Campagne d'édition : décompte par article",
+      "description": "Un point par article créé, traduit ou amélioré, et par photo utilisée dans un article. Fixez les minimums de caractères du règlement : à 0, toute création ou modification compte.",
+      "scoring": {
+        "rules": {
+          "article_mode": "flat",
+          "enabled": [
+            "article_created",
+            "article_translated",
+            "article_edited",
+            "photo_uploaded_used"
+          ]
+        },
+        "points": {
+          "article_created": 1,
+          "article_translated": 1,
+          "article_edited": 1,
+          "photo_uploaded_used": 1
+        }
+      }
+    },
+    {
+      "id": "photo",
+      "label": "Concours photo (Wiki Loves…)",
+      "description": "Toutes les photos téléversées comptent, utilisées ou non ; le bonus « photo utilisée » est disponible si le règlement le prévoit.",
+      "scoring": {
+        "rules": {
+          "enabled": [
+            "photo_uploaded",
+            "photo_uploaded_used"
+          ]
+        },
+        "points": {
+          "photo_uploaded": 1,
+          "photo_uploaded_used": 0
+        }
+      }
     },
     {
       "id": "wsf2026",
       "label": "Wiki for Sustainable Futures 2026",
-      "source": "Barème communiqué par Wikimédiens du Bénin (novembre 2026)",
+      "description": "Barème communiqué par Wikimédiens du Bénin (novembre 2026).",
       "scoring": {
-        "thresholds": {
-          "article_short_min_chars": 0
+        "rules": {
+          "article_mode": "flat",
+          "enabled": [
+            "article_created",
+            "article_edited",
+            "reference_added",
+            "wikidata_item",
+            "photo_uploaded",
+            "photo_existing_used"
+          ]
         },
         "points": {
-          "article_long": 10,
-          "article_short": 10,
+          "article_created": 10,
           "article_edited": 1,
           "reference_added": 2,
           "wikidata_item": 5,
           "photo_uploaded": 2,
-          "photo_uploaded_used": 0,
           "photo_existing_used": 1
         }
       }
