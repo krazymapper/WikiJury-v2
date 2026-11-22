@@ -1,0 +1,141 @@
+{
+  "_comment": "Textes des pages « À propos » et « FAQ », lus par la version web et par la version Streamlit.",
+  "about": {
+    "title": "À propos de WikiJury",
+    "lead": "WikiJury aide les jurys des campagnes Wikimedia à établir un classement que chaque participant peut vérifier : chaque point renvoie à l’article, la photo ou l’élément Wikidata qui l’a rapporté.",
+    "sections": [
+      {
+        "heading": "Ce que fait l’outil",
+        "paragraphs": [
+          "Le jury dépose les exports de sa campagne (Outreach Dashboard ou tableaux maison), choisit le type de campagne et coche les critères de son règlement. WikiJury calcule le classement, gère les ex æquo et les participants hors concours, et produit un export CSV et un procès-verbal à signer.",
+          "Les fichiers fournis définissent le périmètre de la campagne. WikiJury n’interroge pas les wikis : un même contributeur participe souvent à plusieurs campagnes à la fois, et ses autres contributions ne doivent pas entrer dans le classement."
+        ]
+      },
+      {
+        "heading": "Nos principes",
+        "items": [
+          "Transparence : le barème appliqué, la règle des co-auteurs et les plafonds figurent dans l’export et le procès-verbal.",
+          "Confidentialité : dans la version web, les fichiers sont lus par votre navigateur et ne sont envoyés à aucun serveur.",
+          "Honnêteté sur les limites : les modèles de campagne citent leurs sources et signalent ce qui n’a pas pu être vérifié. Les critères de qualité (sources, admissibilité) restent l’affaire du jury."
+        ]
+      },
+      {
+        "heading": "Qui est derrière WikiJury",
+        "paragraphs": [
+          "WikiJury est porté par les Wikimédiens du Bénin. C’est un logiciel libre, distribué sous licence MIT : chacun peut l’utiliser, l’adapter et proposer des améliorations.",
+          "WikiJury est un outil communautaire indépendant : il n’est ni édité ni approuvé par la Wikimedia Foundation."
+        ]
+      }
+    ],
+    "links": [
+      { "label": "Code source sur GitHub", "url": "https://github.com/krazymapper/WikiJury-v2" },
+      { "label": "Signaler un problème", "url": "https://github.com/krazymapper/WikiJury-v2/issues" }
+    ]
+  },
+  "faq": {
+    "title": "Questions fréquentes",
+    "groups": [
+      {
+        "heading": "Importer les données",
+        "questions": [
+          {
+            "id": "fichiers",
+            "q": "Quels fichiers dois-je importer ?",
+            "a": [
+              "Pour une campagne suivie sur l’Outreach Dashboard, les exports CSV « articles », « uploads » et « editors » suffisent. L’export « articles » contient les articles créés et modifiés, les éléments Wikidata et les fichiers Commons de chaque participant.",
+              "Vous pouvez aussi importer des tableaux préparés à la main, en CSV ou en Excel (.xlsx ou .xls). WikiJury reconnaît le type de chaque fichier et ses colonnes ; vous pouvez corriger son choix."
+            ]
+          },
+          {
+            "id": "wikidata-refuse",
+            "q": "Pourquoi l’export « wikidata » du Dashboard est-il marqué comme non exploitable ?",
+            "a": [
+              "Cet export donne des totaux pour toute la campagne, sans nom d’utilisateur : il ne permet pas de savoir qui a fait quoi. Les éléments Wikidata créés par chaque participant sont lus dans l’export « articles »."
+            ]
+          },
+          {
+            "id": "confidentialite",
+            "q": "Mes fichiers sont-ils envoyés quelque part ?",
+            "a": [
+              "Dans la version web, non : ils sont lus par votre navigateur. Seuls le barème, le nom de la campagne et la liste des participants hors concours sont mémorisés dans votre navigateur pour la visite suivante.",
+              "Dans la version Streamlit, les fichiers passent par le serveur qui héberge l’application le temps de la session, sans être conservés."
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Comprendre le calcul",
+        "questions": [
+          {
+            "id": "co-auteurs",
+            "q": "Comment sont traités les articles écrits à plusieurs ?",
+            "a": [
+              "L’export « articles » liste tous les participants ayant modifié une page, sans dire qui l’a créée, et l’ordre de cette liste ne désigne pas le créateur. Le jury choisit la règle : partager les points (par défaut), donner les points entiers à chacun, ou les attribuer au premier participant listé. Ce choix peut changer le podium."
+            ]
+          },
+          {
+            "id": "photos-zero",
+            "q": "Pourquoi les photos téléversées ne rapportent-elles rien ?",
+            "a": [
+              "Soit le type de campagne ne note pas les photos, soit il faut l’export « uploads » du Dashboard : lui seul indique combien de fois chaque photo est utilisée. Sans lui, les photos sont listées avec la mention « usage inconnu »."
+            ]
+          },
+          {
+            "id": "traductions",
+            "q": "Comment compter les articles traduits ?",
+            "a": [
+              "Les exports du Dashboard ne distinguent pas une traduction d’une création. Importez une liste des articles traduits (une colonne titre, une colonne wiki facultative) : elle requalifie les articles déjà présents dans la campagne. Un titre absent est signalé et ignoré."
+            ]
+          },
+          {
+            "id": "plafonds",
+            "q": "À quoi servent les plafonds par participant ?",
+            "a": [
+              "Un plafond limite les points qu’un participant peut obtenir sur un critère. Il évite qu’un très grand nombre de petites modifications ou de références l’emporte sur le contenu. Leur usage relève du règlement du concours."
+            ]
+          },
+          {
+            "id": "exactitude",
+            "q": "Les points sont-ils exacts ?",
+            "a": [
+              "Ils sont exacts au regard des fichiers fournis et du barème choisi. Deux limites à garder en tête : la taille d’un article vient de « characters_added », qui cumule les ajouts de tous les participants ; et les critères de qualité (sources, admissibilité, traduction automatique) ne figurent dans aucun export. Le classement prépare la délibération du jury, il ne la remplace pas."
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Adapter WikiJury à ma campagne",
+        "questions": [
+          {
+            "id": "bareme",
+            "q": "Comment appliquer le barème de ma campagne ?",
+            "a": [
+              "Choisissez le type de campagne le plus proche, puis cochez les critères, ajustez les points, les minimums de caractères ou la grille de paliers. Pour ajouter un modèle durable, ajoutez une entrée, avec ses sources, dans le fichier shared/presets.json du dépôt."
+            ]
+          },
+          {
+            "id": "concours-photo",
+            "q": "WikiJury peut-il désigner les lauréats d’un concours photo ?",
+            "a": [
+              "Non. Les concours Wiki Loves sont jugés par un jury sur la qualité des images. WikiJury compte les photos de chaque participant pour préparer ce travail."
+            ]
+          },
+          {
+            "id": "proces-verbal",
+            "q": "Que contient le procès-verbal ?",
+            "a": [
+              "Le nom de la campagne, la date, le barème et les règles appliqués, le classement complet avec le détail par critère, et des emplacements pour la signature des membres du jury. Il s’imprime depuis le bouton « Imprimer le procès-verbal » ou s’enregistre en PDF depuis la fenêtre d’impression."
+            ]
+          },
+          {
+            "id": "probleme",
+            "q": "J’ai trouvé une erreur. Comment la signaler ?",
+            "a": [
+              "Ouvrez un ticket sur GitHub en décrivant la campagne, le type de campagne choisi et, si possible, un extrait anonymisé du fichier concerné."
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

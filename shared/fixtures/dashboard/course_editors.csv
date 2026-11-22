@@ -1,0 +1,5 @@
+username,global_id,enrollment_timestamp,registered_at,revisions_during_project,mainspace_bytes_added,userspace_bytes_added,draft_space_bytes_added,references_added,registered_during_project,total_articles_edited,completed_training_modules_count,assigned_training_modules_count,completed_training_modules
+Abla Exemple,1,2025-10-16 18:13:13 UTC,2021-07-14 08:54:44 UTC,40,12000,140,0,17,false,4,0,0,""
+Bio Exemple,2,2025-10-16 18:13:13 UTC,,25,9000,0,0,6,false,5,0,0,""
+Codjo Exemple,3,2025-10-16 18:13:13 UTC,,15,3000,0,0,0,false,3,0,0,""
+Dossi Exemple,,2025-10-16 18:13:13 UTC,,0,0,0,0,0,false,0,0,0,""
