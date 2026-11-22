@@ -1,83 +1,23 @@
+# Node
+node_modules/
+web/dist/
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
+.venv/
 venv/
-ENV/
-env/
-.env
+.pytest_cache/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-.project
-.pydevproject
-.settings/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
-# Application specific
-data/cache/*
-!data/cache/.gitkeep
+# Données réelles de concours : ne jamais les versionner
 *.csv
 *.xlsx
 *.xls
-*.log
+!shared/fixtures/*.csv
 
-# OS specific
+# Divers
+.env
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-coverage.xml
-*.cover
-.hypothesis/
-
-# Distribution
-*.manifest
-*.spec
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg 
+.idea/
+.vscode/

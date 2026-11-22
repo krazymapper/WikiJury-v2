@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WikiJury : classement des concours Wikimedia</title>
+    <meta name="description" content="Classez les participants d'un concours Wikimedia à partir des exports de l'Outreach Dashboard, avec un barème transparent. Vos fichiers restent dans votre navigateur." />
+    <meta name="theme-color" content="#006699" />
+    <link rel="icon" href="./img/favicon.ico" sizes="any" />
+    <link rel="icon" href="./img/favicon.png" type="image/png" />
+    <script type="module" src="./src/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Aller au classement</a>
+
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="WikiJury, accueil">
+        <img src="./img/mark.png" alt="" width="44" height="44" />
+        <span class="brand-name">WikiJury</span>
+      </a>
+      <nav class="topbar-actions" aria-label="Actions sur le classement">
+        <button type="button" class="btn btn-quiet" data-action="print" disabled>Imprimer<span class="label-long"> le procès-verbal</span></button>
+        <button type="button" class="btn btn-primary" data-action="export" disabled>Exporter<span class="label-long"> le classement</span> (CSV)</button>
+      </nav>
+    </header>
+
+    <div class="layout">
+      <aside class="rail" aria-label="Fichiers et barème">
+        <section class="panel" aria-labelledby="files-title">
+          <h2 id="files-title" class="panel-title">Fichiers</h2>
+          <label class="dropzone" data-dropzone>
+            <input type="file" multiple accept=".csv,.tsv,.txt,.xlsx" data-file-input class="visually-hidden" />
+            <span class="dropzone-main">Déposez vos exports ici</span>
+            <span class="dropzone-sub">ou <span class="link-like">choisissez des fichiers</span> CSV ou Excel (.xlsx)</span>
+          </label>
+          <ul class="file-list" data-file-list></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="scoring-title">
+          <div class="panel-head">
+            <h2 id="scoring-title" class="panel-title">Barème</h2>
+            <button type="button" class="btn-text" data-action="reset-scoring">Rétablir</button>
+          </div>
+          <div data-scoring></div>
+        </section>
+
+        <section class="panel" aria-labelledby="excluded-title" data-excluded-panel hidden>
+          <h2 id="excluded-title" class="panel-title">Hors concours</h2>
+          <ul class="excluded-list" data-excluded-list></ul>
+        </section>
+      </aside>
+
+      <main id="main" class="stage" tabindex="-1">
+        <div class="campaign">
+          <label class="visually-hidden" for="campaign-name">Nom de la campagne</label>
+          <input id="campaign-name" class="campaign-name" data-campaign placeholder="Nom de la campagne" maxlength="90" autocomplete="off" spellcheck="false" />
+          <p class="campaign-meta" data-summary aria-live="polite"></p>
+        </div>
+        <div data-stage></div>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <p class="footer-privacy">Vos fichiers sont lus dans votre navigateur : aucune donnée n'est envoyée sur un serveur.</p>
+      <div class="footer-partners" aria-label="Partenaires">
+        <img src="./img/wikimedia-benin.png" alt="Wikimédiens du Bénin User Group" height="56" />
+        <img src="./img/osm-benin.png" alt="OpenStreetMap Bénin" height="48" />
+        <img src="./img/mapequilibre.png" alt="Mapequilibre" height="48" />
+      </div>
+      <p class="footer-meta">
+        WikiJury est un logiciel libre sous licence MIT.
+        <a href="https://github.com/krazymapper/WikiJury-v2">Voir le code source sur GitHub</a>
+      </p>
+    </footer>
+
+    <dialog class="sheet" data-sheet aria-labelledby="sheet-title">
+      <div class="sheet-inner" data-sheet-body></div>
+    </dialog>
+
+    <section class="print-only" data-print aria-hidden="true"></section>
+  </body>
+</html>

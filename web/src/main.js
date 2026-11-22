@@ -1,0 +1,619 @@
+import '@fontsource/atkinson-hyperlegible/400.css';
+import '@fontsource/atkinson-hyperlegible/700.css';
+import '@fontsource/schibsted-grotesk/500.css';
+import '@fontsource/schibsted-grotesk/700.css';
+import '@fontsource/schibsted-grotesk/800.css';
+import './styles.css';
+
+import columnsSpec from '../../shared/columns.json';
+import defaultScoring from '../../shared/scoring.default.json';
+import { detectKind, mapColumns, missingFields } from './engine/columns.js';
+import { CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, mergeScoring } from './engine/scoring.js';
+import { normalizeUsername } from './engine/normalize.js';
+import { download, parseCsvText, parseFile, rankingToCsv, slugify } from './io.js';
+import { SAMPLE_FILES } from './sample.js';
+
+/* ------------------------------------------------------------------ état */
+
+const STORAGE_KEY = 'wikijury:v3';
+const SCORED_KINDS = ['articles', 'uploads', 'wikidata', 'existing_photos'];
+
+const stored = loadStored();
+const state = {
+  files: [],
+  scoring: mergeScoring(defaultScoring, stored.scoring),
+  campaign: stored.campaign ?? '',
+  excluded: stored.excluded ?? [],
+  result: { participants: [], warnings: [] },
+};
+let nextId = 1;
+
+function loadStored() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function persist() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ scoring: state.scoring, campaign: state.campaign, excluded: state.excluded }),
+    );
+  } catch {
+    /* stockage indisponible (navigation privée) : sans conséquence */
+  }
+}
+
+/* ------------------------------------------------------------- utilitaires */
+
+const $ = (sel) => document.querySelector(sel);
+const fmt = new Intl.NumberFormat('fr-FR');
+const plural = (n, one, many) => `${fmt.format(n)} ${Math.abs(n) >= 2 ? many : one}`;
+
+/** Crée un élément sans jamais interpréter de HTML venant des fichiers. */
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === 'class') el.className = value;
+    else if (key === 'text') el.textContent = value;
+    else if (key === 'style') for (const [p, v] of Object.entries(value)) el.style.setProperty(p, v);
+    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
+    else if (value === true) el.setAttribute(key, '');
+    else el.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return el;
+}
+
+const isScoringValid = () =>
+  state.scoring.thresholds.article_short_min_chars < state.scoring.thresholds.article_long_min_chars;
+
+/* ---------------------------------------------------------------- calcul */
+
+function usableDatasets() {
+  return state.files
+    .filter((f) => !f.error && f.kind && missingFields(f.mapping, columnsSpec.kinds[f.kind]).length === 0)
+    .map((f) => ({ kind: f.kind, mapping: f.mapping, rows: f.rows, source: f.name }));
+}
+
+function recompute() {
+  state.result = isScoringValid()
+    ? computeRanking(usableDatasets(), state.scoring, { excluded: state.excluded })
+    : state.result;
+  render();
+}
+
+/* --------------------------------------------------------------- fichiers */
+
+async function addFiles(fileList) {
+  for (const file of fileList) {
+    const entry = { id: nextId++, name: file.name, headers: [], rows: [], kind: null, mapping: {}, error: null };
+    try {
+      Object.assign(entry, await parseFile(file));
+      applyDetection(entry);
+    } catch (err) {
+      entry.error = err.message || 'Lecture impossible.';
+    }
+    state.files.push(entry);
+  }
+  recompute();
+}
+
+function applyDetection(entry) {
+  if (entry.headers.length === 0) {
+    entry.error = 'Aucune colonne trouvée : vérifiez que la première ligne contient les en-têtes.';
+    return;
+  }
+  const detected = detectKind(entry.headers, entry.name, columnsSpec);
+  entry.confidence = detected.confidence;
+  entry.kind = detected.kind ?? 'articles';
+  entry.mapping = detected.mapping ?? mapColumns(entry.headers, columnsSpec.kinds[entry.kind]);
+}
+
+function loadSample() {
+  state.files = SAMPLE_FILES.map(({ name, text }) => {
+    const entry = { id: nextId++, name, kind: null, mapping: {}, error: null, ...parseCsvText(text) };
+    applyDetection(entry);
+    return entry;
+  });
+  if (!state.campaign) {
+    state.campaign = 'Concours d’exemple (données fictives)';
+    $('[data-campaign]').value = state.campaign;
+  }
+  persist();
+  recompute();
+}
+
+/* ---------------------------------------------------------------- rendu */
+
+function render() {
+  const activeId = document.activeElement?.id;
+  renderFiles();
+  renderScoring();
+  renderExcluded();
+  renderStage();
+  const hasRanking = state.result.participants.length > 0;
+  for (const btn of document.querySelectorAll('[data-action="export"], [data-action="print"]')) btn.disabled = !hasRanking;
+  // Les panneaux sont reconstruits : on rend le focus clavier à l'élément équivalent.
+  if (activeId) document.getElementById(activeId)?.focus();
+}
+
+function renderFiles() {
+  const list = $('[data-file-list]');
+  list.replaceChildren(...state.files.map(fileItem));
+}
+
+function fileItem(file) {
+  const remove = h('button', {
+    type: 'button',
+    class: 'icon-btn',
+    'aria-label': `Retirer ${file.name}`,
+    title: 'Retirer ce fichier',
+    onclick: () => {
+      state.files = state.files.filter((f) => f.id !== file.id);
+      recompute();
+    },
+  }, '×');
+
+  if (file.error) {
+    return h('li', { class: 'file is-error' },
+      h('div', { class: 'file-head' }, h('span', { class: 'file-name', text: file.name }), remove),
+      h('p', { class: 'file-status', role: 'alert', text: file.error }),
+    );
+  }
+
+  const spec = file.kind ? columnsSpec.kinds[file.kind] : null;
+  const missing = spec ? missingFields(file.mapping, spec) : [];
+  const selectId = `kind-${file.id}`;
+
+  const kindSelect = h('select', {
+    id: selectId,
+    class: 'select select-sm',
+    onchange: (e) => {
+      file.kind = e.target.value || null;
+      file.mapping = file.kind ? mapColumns(file.headers, columnsSpec.kinds[file.kind]) : {};
+      recompute();
+    },
+  },
+  ...Object.entries(columnsSpec.kinds).map(([kind, k]) => h('option', { value: kind, selected: kind === file.kind, text: k.label })),
+  h('option', { value: '', selected: !file.kind, text: 'Ne pas utiliser ce fichier' }));
+
+  let status;
+  if (!file.kind) status = h('p', { class: 'file-status is-muted', text: 'Fichier ignoré.' });
+  else if (missing.length) status = h('p', { class: 'file-status is-warn', text: `${plural(missing.length, 'colonne', 'colonnes')} à associer avant le calcul.` });
+  else {
+    const note = file.kind === 'editors' ? 'sert de liste des participants' : 'pris en compte';
+    status = h('p', { class: 'file-status is-ok', text: `${plural(file.rows.length, 'ligne', 'lignes')}, ${note}.` });
+  }
+
+  const mappingRows = spec
+    ? Object.entries(spec.fields).map(([field, f]) => {
+        const id = `map-${file.id}-${field}`;
+        return h('div', { class: 'map-row' },
+          h('label', { for: id, text: `${FIELD_LABELS[field] ?? field}${f.required ? '' : ' (facultatif)'}` }),
+          h('select', {
+            id,
+            class: 'select select-sm',
+            onchange: (e) => {
+              file.mapping[field] = e.target.value || null;
+              recompute();
+            },
+          },
+          h('option', { value: '', text: '— aucune —' }),
+          ...file.headers.map((header) => h('option', { value: header, selected: file.mapping[field] === header, text: header }))),
+        );
+      })
+    : [];
+
+  return h('li', { class: `file${missing.length ? ' is-warn' : ''}` },
+    h('div', { class: 'file-head' }, h('span', { class: 'file-name', text: file.name, title: file.name }), remove),
+    h('label', { class: 'visually-hidden', for: selectId, text: `Type du fichier ${file.name}` }),
+    kindSelect,
+    status,
+    spec ? h('details', { class: 'mapping', open: missing.length > 0 },
+      h('summary', { text: 'Colonnes utilisées' }),
+      ...mappingRows) : null,
+  );
+}
+
+const FIELD_LABELS = {
+  username: 'Contributeur',
+  title: 'Titre de l’article',
+  characters: 'Caractères ajoutés',
+  new: 'Créé pendant la campagne',
+  filename: 'Nom du fichier',
+  usage_count: 'Nombre d’utilisations',
+  item: 'Identifiant Wikidata',
+  quantity: 'Nombre d’éléments',
+  article: 'Article',
+  edits: 'Modifications',
+  bytes: 'Octets ajoutés',
+  references: 'Références ajoutées',
+};
+
+// Le panneau du barème est construit une fois puis mis à jour sur place :
+// le reconstruire ferait perdre le focus clavier pendant la saisie.
+let scoringUi = null;
+
+function renderScoring() {
+  if (!scoringUi) scoringUi = buildScoring();
+  for (const c of CRITERIA) {
+    scoringUi.labels[c].textContent = criterionLabel(c, state.scoring);
+    if (document.activeElement !== scoringUi.points[c]) scoringUi.points[c].value = String(state.scoring.points[c]);
+  }
+  const valid = isScoringValid();
+  for (const [key, input] of Object.entries(scoringUi.thresholds)) {
+    if (document.activeElement !== input) input.value = String(state.scoring.thresholds[key]);
+    if (valid) {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+    } else {
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', 'th-error');
+    }
+  }
+  scoringUi.error.hidden = valid;
+}
+
+function buildScoring() {
+  const ui = { labels: {}, points: {}, thresholds: {}, error: null };
+  const pointsRows = CRITERIA.map((c) => {
+    const id = `pts-${c}`;
+    ui.labels[c] = h('label', { for: id, class: 'score-label' });
+    ui.points[c] = h('input', {
+      id,
+      type: 'number',
+      inputmode: 'numeric',
+      min: '0',
+      max: '1000',
+      step: '1',
+      onchange: (e) => updatePoints(c, e.target),
+    });
+    return h('div', { class: 'score-row' },
+      h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
+      ui.labels[c],
+      h('span', { class: 'score-input' }, ui.points[c], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'pt' })));
+  });
+
+  const threshold = (key, label) => {
+    const id = `th-${key}`;
+    ui.thresholds[key] = h('input', {
+      id,
+      type: 'number',
+      inputmode: 'numeric',
+      min: '1',
+      step: '100',
+      onchange: (e) => {
+        state.scoring.thresholds[key] = Math.max(1, Math.trunc(Number(e.target.value) || 0));
+        e.target.value = String(state.scoring.thresholds[key]);
+        persist();
+        recompute();
+      },
+    });
+    return h('div', { class: 'threshold' },
+      h('label', { for: id, text: label }),
+      h('span', { class: 'score-input is-wide' }, ui.thresholds[key], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'car.' })));
+  };
+
+  ui.error = h('p', {
+    id: 'th-error',
+    class: 'field-error',
+    role: 'alert',
+    hidden: true,
+    text: 'Le seuil de l’article court doit être inférieur à celui de l’article long. Le classement affiché reste celui du dernier barème valide.',
+  });
+
+  $('[data-scoring]').replaceChildren(
+    h('div', { class: 'score-list' }, ...pointsRows),
+    h('div', { class: 'thresholds' },
+      threshold('article_long_min_chars', 'Article long à partir de'),
+      threshold('article_short_min_chars', 'Article court à partir de'),
+      ui.error),
+  );
+  return ui;
+}
+
+function updatePoints(criterion, input) {
+  const value = Math.trunc(Number(input.value));
+  state.scoring.points[criterion] = Number.isFinite(value) ? Math.min(1000, Math.max(0, value)) : 0;
+  input.value = String(state.scoring.points[criterion]);
+  persist();
+  recompute();
+}
+
+function renderExcluded() {
+  const panel = $('[data-excluded-panel]');
+  panel.hidden = state.excluded.length === 0;
+  $('[data-excluded-list]').replaceChildren(
+    ...state.excluded.map((name) =>
+      h('li', {},
+        h('span', { text: name }),
+        h('button', { type: 'button', class: 'btn-text', 'aria-label': `Réintégrer ${name} au classement`, onclick: () => toggleExcluded(name), text: 'Réintégrer' })),
+    ),
+  );
+}
+
+function toggleExcluded(name) {
+  const n = normalizeUsername(name);
+  state.excluded = state.excluded.includes(n) ? state.excluded.filter((x) => x !== n) : [...state.excluded, n];
+  persist();
+  recompute();
+}
+
+/* --------------------------------------------------------------- scène */
+
+function renderStage() {
+  const stage = $('[data-stage]');
+  const summary = $('[data-summary]');
+  const scored = usableDatasets().some((d) => SCORED_KINDS.includes(d.kind));
+  const { participants, warnings } = state.result;
+
+  if (!scored) {
+    summary.textContent = '';
+    stage.replaceChildren(emptyState());
+    return;
+  }
+
+  const ranked = participants.filter((p) => !p.excluded);
+  const totalPoints = ranked.reduce((s, p) => s + p.total, 0);
+  summary.textContent = `${plural(ranked.length, 'participant classé', 'participants classés')}, ${plural(totalPoints, 'point attribué', 'points attribués')}.`;
+
+  stage.replaceChildren(
+    legend(),
+    warnings.length ? warningsBlock(warnings) : null,
+    rankingTable(participants),
+  );
+}
+
+function emptyState() {
+  const steps = [
+    ['Exportez vos données', 'Depuis l’Outreach Dashboard ou un autre outil : articles créés, photos téléversées, éléments Wikidata, liste des participants.'],
+    ['Déposez les fichiers', 'WikiJury reconnaît le type de chaque fichier et ses colonnes. Vous pouvez corriger son choix.'],
+    ['Ajustez le barème', 'Les points et les seuils de taille se modifient dans le panneau « Barème » ; le classement se met à jour aussitôt.'],
+  ];
+  return h('section', { class: 'empty', 'aria-labelledby': 'empty-title' },
+    h('h2', { id: 'empty-title', class: 'empty-title', text: 'Un classement que chaque participant peut vérifier.' }),
+    h('p', { class: 'empty-lead', text: 'Chaque point attribué renvoie à l’article, la photo ou l’élément Wikidata qui l’a rapporté.' }),
+    h('ol', { class: 'steps' }, ...steps.map(([t, d]) => h('li', {}, h('strong', { text: t }), h('span', { text: d })))),
+    h('div', { class: 'empty-actions' },
+      h('button', { type: 'button', class: 'btn btn-primary', onclick: () => $('[data-file-input]').click(), text: 'Choisir des fichiers' }),
+      h('button', { type: 'button', class: 'btn btn-quiet', onclick: loadSample, text: 'Essayer avec des données d’exemple' }),
+    ),
+  );
+}
+
+function legend() {
+  return h('ul', { class: 'legend', 'aria-label': 'Légende des critères' },
+    ...CRITERIA.map((c) => h('li', {},
+      h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
+      `${CRITERION_SHORT[c]} (${plural(state.scoring.points[c], 'pt', 'pts')})`)));
+}
+
+function warningsBlock(warnings) {
+  return h('details', { class: 'warnings' },
+    h('summary', {}, `${plural(warnings.length, 'ligne écartée', 'lignes écartées')} lors de l’import`),
+    h('ul', {}, ...warnings.slice(0, 200).map((w) => h('li', {},
+      h('span', { class: 'warn-src', text: `${w.source}, ligne ${w.row}` }),
+      h('span', { text: w.message })))),
+    warnings.length > 200 ? h('p', { class: 'is-muted', text: `… et ${warnings.length - 200} autres.` }) : null,
+  );
+}
+
+function rankingTable(participants) {
+  const max = Math.max(1, ...participants.map((p) => p.total));
+  const ticks = max <= 60;
+
+  const rows = participants.map((p) => {
+    const segments = CRITERIA.filter((c) => p.points[c] > 0).map((c) =>
+      h('span', {
+        class: `seg c-${c}`,
+        style: { width: `${(p.points[c] / max) * 100}%`, '--n': String(p.points[c]) },
+        title: `${CRITERION_SHORT[c]} : ${p.counts[c]} × ${state.scoring.points[c]} = ${p.points[c]} pts`,
+      }));
+    const tie = p.rank !== null && participants.filter((o) => o.rank === p.rank).length > 1;
+    return h('tr', { class: `${p.excluded ? 'is-excluded' : ''} ${p.rank && p.rank <= 3 ? `is-top top-${p.rank}` : ''}` },
+      h('td', { class: 'col-rank' },
+        p.excluded
+          ? h('span', { class: 'rank-out', text: 'H.C.', title: 'Hors concours' })
+          : h('span', { class: 'rank' }, String(p.rank), tie ? h('span', { class: 'tie', text: ' ex æquo' }) : null)),
+      h('th', { scope: 'row', class: 'col-name' },
+        h('button', { type: 'button', class: 'name-btn', onclick: (e) => openSheet(p.username, e.currentTarget), text: p.username })),
+      h('td', { class: 'col-bar' },
+        h('div', { class: `bar${ticks ? ' has-ticks' : ''}`, role: 'img', 'aria-label': describePoints(p) }, ...segments)),
+      h('td', { class: 'col-total' }, h('span', { class: 'total', text: fmt.format(p.total) }), h('span', { class: 'total-unit', text: ' pts' })),
+    );
+  });
+
+  return h('table', { class: 'ranking' },
+    h('caption', { class: 'visually-hidden', text: 'Classement des participants. Sélectionnez un nom pour voir le détail des points.' }),
+    h('thead', {}, h('tr', {},
+      h('th', { scope: 'col', class: 'col-rank', text: 'Rang' }),
+      h('th', { scope: 'col', class: 'col-name', text: 'Contributeur' }),
+      h('th', { scope: 'col', class: 'col-bar', text: 'Origine des points' }),
+      h('th', { scope: 'col', class: 'col-total', text: 'Total' }))),
+    h('tbody', {}, ...rows));
+}
+
+function describePoints(p) {
+  const parts = CRITERIA.filter((c) => p.points[c] > 0).map((c) => `${CRITERION_SHORT[c]} ${p.points[c]}`);
+  return parts.length ? parts.join(', ') : 'Aucun point';
+}
+
+/* ----------------------------------------------------- fiche contributeur */
+
+const STATUS_TEXT = {
+  article_long: () => 'Article long',
+  article_short: () => 'Article court',
+  too_short: (e) => `Trop court : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.thresholds.article_short_min_chars)}`,
+  not_new: () => 'Non créé pendant la campagne',
+  photo_uploaded_used: (e) => `Utilisée ${plural(e.usage, 'fois', 'fois')}`,
+  photo_unused: () => 'Non utilisée dans un article',
+  wikidata_item: () => 'Élément créé',
+  photo_existing_used: (e) => (e.article ? `Ajoutée à « ${e.article} »` : 'Ajoutée à un article'),
+};
+
+const EVIDENCE_GROUPS = [
+  ['article', 'Articles'],
+  ['upload', 'Photos téléversées'],
+  ['wikidata', 'Éléments Wikidata'],
+  ['existing_photo', 'Photos existantes réutilisées'],
+];
+
+function evidenceLink(e) {
+  if (e.type === 'upload' || e.type === 'existing_photo') {
+    return h('a', { href: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(e.label.replace(/ /g, '_'))}`, target: '_blank', rel: 'noopener noreferrer', text: e.label });
+  }
+  if (e.type === 'wikidata' && /^Q\d+$/.test(e.label)) {
+    return h('a', { href: `https://www.wikidata.org/wiki/${e.label}`, target: '_blank', rel: 'noopener noreferrer', text: e.label });
+  }
+  return h('span', { text: e.label });
+}
+
+let sheetOpener = null;
+
+function openSheet(username, opener) {
+  const p = state.result.participants.find((x) => x.username === username);
+  if (!p) return;
+  sheetOpener = opener;
+  const dialog = $('[data-sheet]');
+  const pointsRows = CRITERIA.map((c) => h('tr', {},
+    h('th', { scope: 'row' }, h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }), criterionLabel(c, state.scoring)),
+    h('td', { text: fmt.format(p.counts[c]) }),
+    h('td', { text: `× ${state.scoring.points[c]}` }),
+    h('td', { class: 'num-strong', text: fmt.format(p.points[c]) })));
+
+  const groups = EVIDENCE_GROUPS.map(([type, title]) => {
+    const items = p.evidence.filter((e) => e.type === type);
+    if (!items.length) return null;
+    return h('section', { class: 'evidence' },
+      h('h3', { text: `${title} (${items.length})` }),
+      h('ul', {}, ...items.map((e) => {
+        const counted = CRITERIA.includes(e.status);
+        return h('li', { class: counted ? 'is-counted' : 'is-ignored' },
+          h('span', { class: `swatch ${counted ? `c-${e.status}` : 'c-none'}`, 'aria-hidden': 'true' }),
+          h('span', { class: 'ev-label' }, evidenceLink(e)),
+          h('span', { class: 'ev-status', text: STATUS_TEXT[e.status]?.(e) ?? '' }),
+          h('span', { class: 'ev-points', text: counted ? `+${state.scoring.points[e.status] * (e.quantity ?? 1)}` : '0' }));
+      })));
+  });
+
+  const ctx = p.context;
+  const context = Object.keys(ctx).length
+    ? h('p', { class: 'sheet-context', text: [
+        ctx.edits !== undefined ? plural(ctx.edits, 'modification', 'modifications') : null,
+        ctx.bytes !== undefined ? `${fmt.format(ctx.bytes)} octets ajoutés` : null,
+        ctx.references !== undefined ? plural(ctx.references, 'référence ajoutée', 'références ajoutées') : null,
+      ].filter(Boolean).join(', ') + ' pendant la campagne (pour information, sans points).' })
+    : null;
+
+  $('[data-sheet-body]').replaceChildren(
+    h('header', { class: 'sheet-head' },
+      h('div', {},
+        h('p', { class: 'sheet-rank', text: p.excluded ? 'Hors concours' : `${p.rank}${p.rank === 1 ? 'er' : 'e'} du classement` }),
+        h('h2', { id: 'sheet-title', class: 'sheet-name', text: p.username })),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Fermer la fiche', onclick: () => dialog.close() }, '×')),
+    h('p', { class: 'sheet-total' }, h('span', { text: fmt.format(p.total) }), ' points'),
+    context,
+    h('table', { class: 'points-table' },
+      h('caption', { class: 'visually-hidden', text: 'Calcul des points par critère' }),
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col', text: 'Critère' }), h('th', { scope: 'col', text: 'Nombre' }), h('th', { scope: 'col', text: 'Barème' }), h('th', { scope: 'col', text: 'Points' }))),
+      h('tbody', {}, ...pointsRows)),
+    ...groups,
+    h('div', { class: 'sheet-actions' },
+      h('button', {
+        type: 'button',
+        class: 'btn btn-quiet',
+        onclick: () => {
+          toggleExcluded(p.username);
+          dialog.close();
+        },
+        text: p.excluded ? 'Réintégrer au classement' : 'Classer hors concours',
+      })),
+  );
+  dialog.showModal();
+}
+
+/* ------------------------------------------------- procès-verbal imprimé */
+
+function renderPrint() {
+  const date = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date());
+  const { participants } = state.result;
+  $('[data-print]').replaceChildren(
+    h('h1', { text: state.campaign || 'Classement du concours' }),
+    h('p', { text: `Procès-verbal établi le ${date} avec WikiJury.` }),
+    h('h2', { text: 'Barème appliqué' }),
+    h('table', {}, h('tbody', {}, ...CRITERIA.map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
+    h('h2', { text: 'Classement' }),
+    h('table', {},
+      h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...CRITERIA.map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),
+      h('tbody', {}, ...participants.map((p) => h('tr', {},
+        h('td', { text: p.excluded ? 'H.C.' : String(p.rank) }),
+        h('td', { text: p.username }),
+        ...CRITERIA.map((c) => h('td', { text: String(p.counts[c]) })),
+        h('td', { text: String(p.total) }))))),
+    h('p', { class: 'print-note', text: 'Les colonnes de critères indiquent le nombre de contributions retenues. H.C. : hors concours.' }),
+    h('div', { class: 'signatures' }, ...[1, 2, 3].map(() => h('div', {}, h('span', { text: 'Membre du jury : nom et signature' })))),
+  );
+}
+
+/* --------------------------------------------------------------- liaisons */
+
+function bind() {
+  const input = $('[data-file-input]');
+  input.addEventListener('change', () => {
+    addFiles([...input.files]);
+    input.value = '';
+  });
+
+  const zone = $('[data-dropzone]');
+  for (const type of ['dragenter', 'dragover']) {
+    zone.addEventListener(type, (e) => {
+      e.preventDefault();
+      zone.classList.add('is-over');
+    });
+  }
+  for (const type of ['dragleave', 'drop']) zone.addEventListener(type, () => zone.classList.remove('is-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    addFiles([...e.dataTransfer.files]);
+  });
+
+  const campaign = $('[data-campaign]');
+  campaign.value = state.campaign;
+  campaign.addEventListener('input', () => {
+    state.campaign = campaign.value;
+    persist();
+  });
+
+  $('[data-action="reset-scoring"]').addEventListener('click', () => {
+    state.scoring = mergeScoring(defaultScoring);
+    persist();
+    recompute();
+  });
+
+  $('[data-action="export"]').addEventListener('click', () => {
+    const date = new Date().toISOString().slice(0, 10);
+    download(`wikijury-${slugify(state.campaign)}-${date}.csv`, rankingToCsv(state.result.participants, state.scoring));
+  });
+
+  $('[data-action="print"]').addEventListener('click', () => {
+    renderPrint();
+    window.print();
+  });
+
+  const dialog = $('[data-sheet]');
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => sheetOpener?.isConnected && sheetOpener.focus());
+}
+
+bind();
+recompute();

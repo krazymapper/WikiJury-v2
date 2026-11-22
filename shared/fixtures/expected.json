@@ -1,0 +1,61 @@
+{
+  "_comment": "Résultats calculés à la main à partir des CSV de ce dossier. Les deux implémentations (web et Streamlit) doivent produire exactement ces classements.",
+  "files": {
+    "editors.csv": "editors",
+    "articles.csv": "articles",
+    "uploads.csv": "uploads",
+    "wikidata.csv": "wikidata",
+    "existing_photos.csv": "existing_photos"
+  },
+  "warnings": { "duplicate": 4, "missing_value": 1 },
+  "scenarios": [
+    {
+      "name": "barème par défaut",
+      "scoring": {},
+      "excluded": [],
+      "ranking": [
+        { "username": "Aïcha Dossou", "rank": 1, "total": 13, "counts": { "article_long": 1, "article_short": 1, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 0 } },
+        { "username": "Koffi Mensah", "rank": 2, "total": 11, "counts": { "article_long": 1, "article_short": 0, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 1 } },
+        { "username": "Rachidatou", "rank": 2, "total": 11, "counts": { "article_long": 0, "article_short": 0, "wikidata_item": 2, "photo_uploaded_used": 1, "photo_existing_used": 3 } },
+        { "username": "Jury Membre", "rank": 4, "total": 5, "counts": { "article_long": 1, "article_short": 0, "wikidata_item": 0, "photo_uploaded_used": 0, "photo_existing_used": 0 } },
+        { "username": "Sans Contribution", "rank": 5, "total": 0, "counts": { "article_long": 0, "article_short": 0, "wikidata_item": 0, "photo_uploaded_used": 0, "photo_existing_used": 0 } }
+      ]
+    },
+    {
+      "name": "article long à 10 points",
+      "scoring": { "points": { "article_long": 10 } },
+      "excluded": [],
+      "ranking": [
+        { "username": "Aïcha Dossou", "rank": 1, "total": 18 },
+        { "username": "Koffi Mensah", "rank": 2, "total": 16 },
+        { "username": "Rachidatou", "rank": 3, "total": 11 },
+        { "username": "Jury Membre", "rank": 4, "total": 10 },
+        { "username": "Sans Contribution", "rank": 5, "total": 0 }
+      ]
+    },
+    {
+      "name": "seuil article court relevé à 2 200 caractères",
+      "scoring": { "thresholds": { "article_short_min_chars": 2200 } },
+      "excluded": [],
+      "ranking": [
+        { "username": "Koffi Mensah", "rank": 1, "total": 11 },
+        { "username": "Rachidatou", "rank": 1, "total": 11 },
+        { "username": "Aïcha Dossou", "rank": 3, "total": 10 },
+        { "username": "Jury Membre", "rank": 4, "total": 5 },
+        { "username": "Sans Contribution", "rank": 5, "total": 0 }
+      ]
+    },
+    {
+      "name": "membre du jury hors concours",
+      "scoring": {},
+      "excluded": ["jury_Membre"],
+      "ranking": [
+        { "username": "Aïcha Dossou", "rank": 1, "total": 13 },
+        { "username": "Koffi Mensah", "rank": 2, "total": 11 },
+        { "username": "Rachidatou", "rank": 2, "total": 11 },
+        { "username": "Sans Contribution", "rank": 4, "total": 0 },
+        { "username": "Jury Membre", "rank": null, "total": 5 }
+      ]
+    }
+  ]
+}

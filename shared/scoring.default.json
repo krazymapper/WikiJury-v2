@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "thresholds": {
+    "article_long_min_chars": 4000,
+    "article_short_min_chars": 1500
+  },
+  "points": {
+    "article_long": 5,
+    "article_short": 3,
+    "wikidata_item": 3,
+    "photo_uploaded_used": 2,
+    "photo_existing_used": 1
+  }
+}

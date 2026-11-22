@@ -1,118 +1,159 @@
-# 🎓 WikiJury
+<p align="center">
+  <img src="shared/brand/wikijury.png" alt="WikiJury" width="160" />
+</p>
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.28.0-red.svg)](https://streamlit.io)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">WikiJury</h1>
 
-Une plateforme sophistiquée d'analyse des contributions Wikimedia, offrant des insights détaillés et des visualisations interactives.
+<p align="center">
+  Le classement des concours Wikimedia, calculé avec un barème transparent :<br />
+  chaque point renvoie à l’article, la photo ou l’élément Wikidata qui l’a rapporté.
+</p>
 
-## ✨ Fonctionnalités
+<p align="center">
+  <a href="https://krazymapper.github.io/WikiJury-v2/"><strong>Ouvrir WikiJury dans le navigateur</strong></a>
+  ·
+  <a href="#version-streamlit">Version Streamlit</a>
+  ·
+  <a href="#formats-de-fichiers">Formats de fichiers</a>
+</p>
 
-- 📊 **Analyse Multi-critères**
-  - Évaluation pondérée des contributions
-  - Métriques personnalisables
-  - Bonus temporel pour les contributeurs précoces
+---
 
-- 📈 **Visualisations Interactives**
-  - Tableaux de bord dynamiques
-  - Graphiques détaillés
-  - Profils individuels des contributeurs
+## À quoi sert WikiJury
 
-- 💾 **Import/Export Flexible**
-  - Support CSV et Excel
-  - Export des résultats
-  - Sauvegarde des analyses
+Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doit classer des participants et pouvoir justifier chaque point. WikiJury lit les exports de l’Outreach Dashboard ou vos propres tableaux, applique le barème du concours et produit :
 
-## 🚀 Installation
+- un **classement** avec gestion des ex æquo (1, 2, 2, 4) ;
+- pour chaque participant, une **fiche détaillée** listant les articles, photos et éléments Wikidata retenus ou écartés, avec la raison ;
+- la liste des **lignes écartées** à l’import (doublons, lignes incomplètes) ;
+- un **export CSV** prêt pour Excel et un **procès-verbal imprimable** avec emplacements de signature du jury ;
+- la possibilité de classer des personnes **hors concours** (organisateurs, membres du jury).
 
-1. Clonez le dépôt :
+## Barème par défaut
+
+| Contribution | Points |
+|---|---|
+| Article créé de 4 000 caractères ou plus | 5 |
+| Article créé de 1 500 à 3 999 caractères | 3 |
+| Élément Wikidata créé | 3 |
+| Photo téléversée et utilisée dans un article | 2 |
+| Photo Commons existante ajoutée à un article | 1 |
+
+Les points et les deux seuils de taille sont **réglables par le jury** dans l’interface. Le barème appliqué figure dans l’export CSV et dans le procès-verbal. Les valeurs par défaut sont définies dans [`shared/scoring.default.json`](shared/scoring.default.json).
+
+### Règles de calcul
+
+- **Un article compte une seule fois.** Si un titre apparaît plusieurs fois, seule la première ligne est retenue et les suivantes sont signalées.
+- **La taille est évaluée article par article**, pas en moyenne par participant. Un article sous le seuil minimal est listé dans la fiche avec la mention « Trop court » et rapporte 0 point.
+- Si le fichier d’articles contient une colonne « nouvel article », seuls les articles marqués comme créés sont notés. Sans cette colonne, toutes les lignes sont considérées comme des créations.
+- **Une photo téléversée rapporte des points uniquement si elle est utilisée** (nombre d’utilisations supérieur à 0). Les photos non utilisées restent visibles dans la fiche.
+- Les noms d’utilisateur sont rapprochés comme le fait MediaWiki : `Koffi_Mensah` et `koffi Mensah` désignent la même personne. Le reste du nom reste sensible à la casse.
+- Les préfixes `File:`, `Fichier:` et `Image:` sont ignorés lors de la comparaison des noms de fichiers.
+- Le fichier des participants (export « editors ») sert de liste d’inscrits et de contexte (modifications, octets, références). **Il n’attribue aucun point.**
+
+## Formats de fichiers
+
+WikiJury accepte le **CSV** (séparateur virgule, point-virgule ou tabulation) et l’**Excel .xlsx**. Le type de chaque fichier et ses colonnes sont reconnus automatiquement à partir des en-têtes (en français ou en anglais, avec ou sans accents). En cas d’erreur, vous pouvez corriger le type et choisir les colonnes à la main.
+
+| Type | Une ligne par… | Colonnes obligatoires | Colonnes facultatives |
+|---|---|---|---|
+| Articles créés | article | contributeur, titre, caractères ajoutés | nouvel article (oui/non) |
+| Photos téléversées | fichier Commons | contributeur, nom du fichier, nombre d’utilisations | |
+| Éléments Wikidata créés | élément | contributeur, et soit l’identifiant (Q…), soit une quantité | |
+| Photos existantes réutilisées | photo ajoutée à un article | contributeur, nom du fichier | article |
+| Participants | participant | contributeur | modifications, octets ajoutés, références ajoutées |
+
+La liste complète des en-têtes reconnus se trouve dans [`shared/columns.json`](shared/columns.json). Pour accepter un nouvel intitulé de colonne, il suffit de l’ajouter dans ce fichier : les deux versions l’utiliseront.
+
+Des fichiers d’exemple fictifs sont fournis dans [`shared/fixtures/`](shared/fixtures/). Le bouton « Essayer avec des données d’exemple » les charge directement.
+
+## Deux versions, un seul moteur
+
+| | Version web | Version Streamlit |
+|---|---|---|
+| Accès | URL publique sur GitHub Pages | Serveur Python (local ou Streamlit Community Cloud) |
+| Données | Lues dans le navigateur, **jamais envoyées** | Envoyées au serveur Streamlit le temps de la session |
+| Usage conseillé | Jurys, partage public, aucune installation | Analyse interne, extension en Python |
+
+Le barème, la correspondance des colonnes et les jeux de test sont partagés dans le dossier `shared/`. Le moteur existe en JavaScript (`web/src/engine/`) et en Python (`streamlit_app/wikijury/`). **Les deux implémentations sont testées contre les mêmes résultats attendus**, calculés à la main ([`shared/fixtures/expected.json`](shared/fixtures/expected.json)). Une divergence fait échouer l’intégration continue.
+
+```
+.
+├── shared/                 # Source de vérité commune
+│   ├── scoring.default.json  # Barème par défaut
+│   ├── columns.json          # Types de fichiers et en-têtes reconnus
+│   ├── fixtures/             # Données fictives + résultats attendus
+│   └── brand/                # Logos optimisés
+├── web/                    # Version navigateur (Vite, JavaScript sans framework)
+│   ├── src/engine/           # Moteur de calcul (pur, sans DOM)
+│   ├── src/main.js           # Interface
+│   └── test/                 # Tests Vitest
+├── streamlit_app/          # Version Streamlit
+│   ├── wikijury/             # Moteur de calcul Python (sans dépendance)
+│   ├── app.py                # Interface
+│   └── tests/                # Tests pytest (moteur + interface)
+└── .github/workflows/      # Tests et publication GitHub Pages
+```
+
+## Développement
+
+### Version web
+
+Prérequis : Node.js 20 ou plus récent.
+
 ```bash
-git clone https://github.com/krazymapper/WikiJury-v2.git
-cd WikiJury-v2
+cd web
+npm install
+npm run dev      # serveur de développement sur http://localhost:5173
+npm test         # tests du moteur
+npm run build    # site statique dans web/dist/
 ```
 
-2. Créez un environnement virtuel (recommandé) :
+### Version Streamlit
+
+Prérequis : Python 3.10 ou plus récent.
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
+python -m venv .venv
+source .venv/bin/activate          # Windows : .venv\Scripts\activate
+pip install -r streamlit_app/requirements-dev.txt
+streamlit run streamlit_app/app.py # depuis la racine du dépôt
+cd streamlit_app && pytest         # tests
 ```
 
-3. Installez les dépendances :
-```bash
-pip install -r requirements.txt
-```
+## Déploiement
 
-4. Lancez l'application :
-```bash
-streamlit run app.py
-```
+### GitHub Pages (version web)
 
-## 📖 Guide d'Utilisation
+1. Dans **Settings → Pages**, choisissez **Source : GitHub Actions**.
+2. Chaque modification de `web/` ou `shared/` poussée sur `main` lance le workflow [`pages.yml`](.github/workflows/pages.yml) : tests, construction, puis publication.
 
-### Format des Données
+Le site utilise des chemins relatifs et fonctionne donc sous n’importe quelle adresse `https://<compte>.github.io/<dépôt>/`.
 
-Le fichier d'entrée (CSV ou Excel) doit contenir les colonnes suivantes :
-- `Utilisateur` : Nom du contributeur
-- `Articles créés` : Nombre d'articles créés
-- `Caractères ajoutés` : Nombre de caractères ajoutés
-- `Articles modifiés` : Nombre d'articles modifiés
-- `Références ajoutées` : Nombre de références ajoutées
-- `Images ajoutées` : Nombre d'images ajoutées
-- `Éléments Wikidata` : Nombre d'éléments Wikidata ajoutés
+### Streamlit Community Cloud (version Streamlit)
 
-### Système de Pondération
+1. Sur [share.streamlit.io](https://share.streamlit.io), créez une application à partir de ce dépôt.
+2. Fichier principal : `streamlit_app/app.py`. Les dépendances sont lues dans `streamlit_app/requirements.txt`, le thème dans `.streamlit/config.toml`.
 
-Chaque métrique peut être pondérée de 0 à 5 :
-- 0 : Métrique ignorée
-- 1 : Importance normale
-- 2-5 : Importance accrue
+## Confidentialité
 
-### Calcul du Score
+- **Version web** : les fichiers sont lus localement par le navigateur. Seuls le barème, le nom de la campagne et la liste des personnes hors concours sont mémorisés dans le navigateur (`localStorage`) pour la prochaine visite.
+- **Version Streamlit** : les fichiers transitent par le serveur qui héberge l’application et ne sont pas conservés après la session.
+- Le `.gitignore` empêche de versionner par erreur des fichiers CSV ou Excel contenant des données réelles.
 
-Le score global est calculé selon la formule :
-```
-Score = Σ (métrique_normalisée × poids_métrique)
-```
+## Contribuer
 
-Où :
-- `métrique_normalisée` = (valeur - min) / (max - min)
-- `poids_métrique` = valeur définie par l'utilisateur (0-5)
+1. Créez une branche : `git checkout -b ma-modification`.
+2. Si vous modifiez une règle de calcul, modifiez **les deux moteurs** et complétez `shared/fixtures/expected.json`.
+3. Vérifiez que `npm test` (dans `web/`) et `pytest` (dans `streamlit_app/`) passent.
+4. Ouvrez une pull request.
 
-## 🛠️ Architecture
+Les tickets se trouvent dans l’onglet [Issues](https://github.com/krazymapper/WikiJury-v2/issues).
 
-```
-wikijury/
-├── app.py              # Application principale
-├── requirements.txt    # Dépendances
-├── assets/            # Ressources statiques
-├── utils/
-│   ├── analysis.py    # Logique d'analyse
-│   └── styling.py     # Styles et composants UI
-└── data/
-    └── cache/         # Cache des analyses
-```
+## Licence et crédits
 
-## 🤝 Contribution
+Distribué sous licence MIT (voir [`LICENSE`](LICENSE)).
 
-1. Fork le projet
-2. Créez une branche (`git checkout -b feature/AmazingFeature`)
-3. Committez vos changements (`git commit -m 'Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrez une Pull Request
+Projet porté par les Wikimédiens du Bénin, avec OpenStreetMap Bénin et Mapequilibre. Polices : Schibsted Grotesk et Atkinson Hyperlegible (SIL Open Font License), embarquées dans le site.
 
-## 📝 License
-
-Distribué sous la licence MIT. Voir `LICENSE` pour plus d'informations.
-
-## 📬 Contact
-
-Pour toute question ou suggestion, n'hésitez pas à :
-- Ouvrir une issue sur GitHub
-- Contacter l'équipe via [GitHub](https://github.com/krazymapper/WikiJury-v2/issues)
-
-## 🙏 Remerciements
-
-- La communauté Wikimedia pour son inspiration
-- Les contributeurs pour leurs retours précieux
-- L'équipe Streamlit pour leur excellent framework
+WikiJury est un outil communautaire indépendant : il n’est ni édité ni approuvé par la Wikimedia Foundation.
