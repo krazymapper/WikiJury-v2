@@ -34,7 +34,7 @@ from wikijury import (
     wikis_in_data,
 )
 from wikijury.io import ImportError_, ranking_to_csv, read_upload
-from wikijury.scoring import shown_criteria
+from wikijury.scoring import is_grid_criterion, shown_criteria
 
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = ROOT / "shared" / "brand"
@@ -137,10 +137,12 @@ def init_state() -> None:
             st.session_state[f"en_{c}"] = c in DEFAULT_SCORING["rules"]["enabled"]
             st.session_state[f"cap_{c}"] = 0
     st.session_state.setdefault("campaign", "")
+    st.session_state.setdefault("grid_created", "")
+    st.session_state.setdefault("grid_edited", "")
     # Streamlit oublie l'état d'un widget qui n'est pas affiché pendant une exécution :
     # on recopie ces valeurs pour qu'un critère masqué garde ses réglages.
     for key in list(st.session_state.keys()):
-        if str(key).startswith(("pts_", "th_", "en_", "cap_")):
+        if str(key).startswith(("pts_", "th_", "en_", "cap_", "grid_")):
             st.session_state[key] = st.session_state[key]
 
 
@@ -155,6 +157,24 @@ def reset_scoring() -> None:
         st.session_state[f"cap_{c}"] = int(preset["rules"].get("caps", {}).get(c, 0))
         st.session_state[f"en_{c}"] = c in enabled_criteria(preset)
     st.session_state["mode"] = preset["rules"].get("article_mode", "tiers")
+    for key in ("created", "edited"):
+        st.session_state[f"grid_{key}"] = format_grid(preset.get("grids", {}).get(key))
+
+
+def format_grid(grid) -> str:
+    return "\n".join(f"{m} = {str(p).replace('.', ',')}" for m, p in sorted(grid or [], key=lambda t: -t[0]))
+
+
+def parse_grid(text: str) -> list[list[float]]:
+    """Lit « 4000 = 12 » ou « 50 : 1,5 », une ligne par palier ; ignore les lignes illisibles."""
+    import re
+    tiers = []
+    for line in re.split(r"[\n;]+", text or ""):
+        m = re.match(r"^\s*(\d+)\s*[=:→-]+\s*(\d+(?:[.,]\d+)?)\s*$", line)
+        if m:
+            pts = float(m.group(2).replace(",", "."))
+            tiers.append([int(m.group(1)), int(pts) if pts.is_integer() else pts])
+    return sorted(tiers, key=lambda t: -t[0])
 
 
 def fmt(n: float) -> str:
@@ -198,9 +218,18 @@ with st.sidebar:
 
     st.markdown("#### Barème")
     st.selectbox("Type de campagne", list(PRESETS), format_func=lambda k: PRESETS[k]["label"], key="preset", on_change=reset_scoring)
-    st.caption(PRESETS[st.session_state.preset].get("description", ""))
+    preset_info = PRESETS[st.session_state.preset]
+    st.caption(preset_info.get("description", ""))
+    for warning in preset_info.get("unverified", []):
+        st.warning(warning, icon="⚠️")
+    if preset_info.get("sources"):
+        st.caption(
+            f"Sources consultées le {preset_info['checked_on']} : "
+            + ", ".join(f"[{src['title']}]({src['url']})" for src in preset_info["sources"])
+        )
     st.selectbox("Notation des nouveaux articles", list(ARTICLE_MODES), format_func=ARTICLE_MODES.get, key="mode")
-    flat = st.session_state.mode == "flat"
+    flat = st.session_state.mode != "tiers"
+    grid_mode = st.session_state.mode == "grid"
     labels_scoring = {"thresholds": {k.removeprefix("th_"): st.session_state[k] for k in st.session_state if str(k).startswith("th_")}}
     st.caption("Cochez les critères retenus par le règlement du concours.")
     scoring_points, enabled = {}, []
@@ -210,13 +239,20 @@ with st.sidebar:
             continue
         label = criterion_label(c, labels_scoring)
         on = st.checkbox(label, key=f"en_{c}")
+        by_grid = (grid_mode and c in ("article_created", "article_translated")) or (
+            c == "article_edited" and bool(parse_grid(st.session_state.grid_edited))
+        )
         scoring_points[c] = st.number_input(
             f"Points : {CRITERION_SHORT[c]}", min_value=0, max_value=1000, step=1, key=f"pts_{c}",
-            label_visibility="collapsed", disabled=not on,
+            label_visibility="collapsed", disabled=not on or by_grid,
+            help="Points fixés par la grille de paliers" if by_grid else None,
         )
         if on:
             enabled.append(c)
-    if flat:
+    if grid_mode:
+        st.text_area("Grille des articles créés", key="grid_created", height=170,
+                     help="Une ligne par palier : caractères minimum = points. Le palier le plus élevé atteint s’applique.")
+    elif flat:
         st.number_input("Minimum pour un article créé ou traduit (car.)", min_value=0, step=100, key="th_article_created_min_chars")
     else:
         col_a, col_b = st.columns(2)
@@ -224,6 +260,7 @@ with st.sidebar:
         col_b.number_input("Article court (car.)", min_value=0, step=100, key="th_article_short_min_chars")
     if "article_edited" in enabled:
         st.number_input("Minimum ajouté pour un article amélioré (car.)", min_value=0, step=100, key="th_article_improved_min_chars")
+        st.text_area("Grille des articles améliorés (vide : barème fixe)", key="grid_edited", height=170)
     long_min = st.session_state.th_article_long_min_chars
     short_min = st.session_state.th_article_short_min_chars
     st.selectbox(
@@ -248,6 +285,7 @@ scoring = merge_scoring(DEFAULT_SCORING, {
         "coauthors": st.session_state.rule_coauthors,
         "caps": {c: v for c, v in caps.items() if v > 0},
     },
+    "grids": {"created": parse_grid(st.session_state.grid_created), "edited": parse_grid(st.session_state.grid_edited)},
 })
 scoring_valid = flat or short_min < long_min
 SHOWN = shown_criteria(scoring)
@@ -359,7 +397,7 @@ st.caption(f"{len(ranked)} participants classés, {fmt(sum(p.total for p in rank
 
 notices = []
 unknown_photos = sum(1 for p in result.participants for e in p.evidence if e["status"] == "photo_usage_unknown" and e["share"] > 0)
-if unknown_photos:
+if unknown_photos and any(c in enabled_criteria(scoring) for c in ("photo_uploaded", "photo_uploaded_used")):
     notices.append(f"{unknown_photos} photo(s) téléversée(s) non notée(s) : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.")
 if result.stats["ignored"]:
     notices.append(f"{fmt(result.stats['ignored'])} page(s) hors critères ignorée(s) (pages de discussion ou utilisateur, éléments Wikidata modifiés, autres espaces de noms).")
@@ -374,7 +412,7 @@ if notices:
     st.info("\n".join(f"- {n}" for n in notices))
 
 legend = "".join(
-    f'<span style="--c:{COLORS[c]}">{CRITERION_SHORT[c]} ({scoring["points"][c]} pt{"s" if scoring["points"][c] > 1 else ""})</span>'
+    f'<span style="--c:{COLORS[c]}">{CRITERION_SHORT[c]} ({"grille" if is_grid_criterion(c, scoring) else str(scoring["points"][c]) + (" pts" if scoring["points"][c] > 1 else " pt")})</span>'
     for c in SHOWN
 )
 st.markdown(f'<div class="wj-legend">{legend}</div>', unsafe_allow_html=True)

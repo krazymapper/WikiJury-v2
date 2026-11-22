@@ -26,6 +26,7 @@ export const CRITERIA = [
 export const ARTICLE_MODES = {
   flat: 'Forfait par article (avec minimum)',
   tiers: 'Selon la taille (deux paliers)',
+  grid: 'Grille de paliers du concours',
 };
 
 /** Critères actifs : tous si le barème ne précise rien. */
@@ -34,9 +35,15 @@ export function enabledCriteria(scoring) {
   return Array.isArray(list) ? CRITERIA.filter((c) => list.includes(c)) : [...CRITERIA];
 }
 
+/** Vrai si les points du critère viennent d'une grille de paliers et non du barème. */
+export function isGridCriterion(c, scoring) {
+  if ((c === 'article_created' || c === 'article_translated') && scoring.rules?.article_mode === 'grid') return true;
+  return c === 'article_edited' && Boolean(scoring.grids?.edited?.length);
+}
+
 /** Critères actifs et pertinents pour le mode de notation des articles (affichage, export). */
 export function shownCriteria(scoring) {
-  const flat = (scoring.rules?.article_mode ?? 'tiers') === 'flat';
+  const flat = (scoring.rules?.article_mode ?? 'tiers') !== 'tiers';
   const hidden = flat ? ['article_long', 'article_short'] : ['article_created', 'article_translated'];
   return enabledCriteria(scoring).filter((c) => !hidden.includes(c));
 }
@@ -53,6 +60,7 @@ export function mergeScoring(base, override = {}) {
     thresholds: { ...base.thresholds, ...(override.thresholds ?? {}) },
     points: { ...base.points, ...(override.points ?? {}) },
     rules: { ...base.rules, ...(override.rules ?? {}) },
+    grids: { ...(base.grids ?? {}), ...(override.grids ?? {}) },
   };
 }
 
@@ -64,6 +72,7 @@ export function criterionLabel(id, scoring) {
   const improved = scoring.thresholds.article_improved_min_chars ?? 0;
   switch (id) {
     case 'article_created':
+      if (scoring.rules?.article_mode === 'grid') return 'Article créé (points selon la grille)';
       return created > 0 ? `Article créé (${formatInt(created)} caractères minimum)` : 'Article créé';
     case 'article_translated':
       return created > 0 ? `Article traduit (${formatInt(created)} caractères minimum)` : 'Article traduit';
@@ -74,6 +83,7 @@ export function criterionLabel(id, scoring) {
         ? `Article créé de moins de ${formatInt(long)} caractères`
         : `Article créé de ${formatInt(short)} à ${formatInt(long - 1)} caractères`;
     case 'article_edited':
+      if (scoring.grids?.edited?.length) return 'Article amélioré (points selon la grille)';
       return improved > 0 ? `Article amélioré (${formatInt(improved)} caractères ajoutés minimum)` : 'Article existant modifié';
     case 'reference_added':
       return 'Référence ajoutée dans un article existant';
@@ -109,10 +119,25 @@ export const round2 = (x) => Math.floor(x * 100 + 0.5) / 100;
 
 const emptyCounts = () => Object.fromEntries(CRITERIA.map((c) => [c, 0]));
 
+/**
+ * Points d'une grille de paliers [[minimum, points], …] : premier palier atteint,
+ * en partant du plus exigeant. null si la taille est sous le dernier palier.
+ */
+export function gridPoints(grid, chars) {
+  const sorted = [...(grid ?? [])].sort((a, b) => b[0] - a[0]);
+  const tier = sorted.find(([min]) => chars >= min);
+  return tier ? Number(tier[1]) : null;
+}
+
 /** Statut d'un nouvel article selon le mode de notation du barème. */
 function articleStatus(chars, scoring, translated = false) {
   const t = scoring.thresholds;
-  if ((scoring.rules.article_mode ?? 'tiers') === 'flat') {
+  const mode = scoring.rules.article_mode ?? 'tiers';
+  if (mode === 'grid') {
+    if (gridPoints(scoring.grids?.created, chars) === null) return 'too_short';
+    return translated && enabledCriteria(scoring).includes('article_translated') ? 'article_translated' : 'article_created';
+  }
+  if (mode === 'flat') {
     const min = t.article_created_min_chars ?? 0;
     if (min > 0 && chars < min) return 'too_short';
     return translated && enabledCriteria(scoring).includes('article_translated') ? 'article_translated' : 'article_created';
@@ -125,7 +150,18 @@ function articleStatus(chars, scoring, translated = false) {
 /** Un article existant est « amélioré » s'il atteint le minimum de caractères ajoutés. */
 function editStatus(chars, scoring) {
   const min = scoring.thresholds.article_improved_min_chars ?? 0;
-  return min > 0 && chars < min ? 'edit_too_small' : 'article_edited';
+  if (min > 0 && chars < min) return 'edit_too_small';
+  if (scoring.grids?.edited?.length && gridPoints(scoring.grids.edited, chars) === null) return 'edit_too_small';
+  return 'article_edited';
+}
+
+/** Points unitaires imposés par une grille (sinon le barème s'applique). */
+function unitPoints(status, chars, scoring) {
+  if ((status === 'article_created' || status === 'article_translated') && scoring.rules.article_mode === 'grid') {
+    return gridPoints(scoring.grids?.created, chars) ?? undefined;
+  }
+  if (status === 'article_edited' && scoring.grids?.edited?.length) return gridPoints(scoring.grids.edited, chars) ?? undefined;
+  return undefined;
 }
 
 /**
@@ -233,8 +269,9 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           }
           const chars = parseCount(get(row, 'characters'));
           const status = editStatus(chars, scoring);
+          const unit = unitPoints(status, chars, scoring);
           for (const u of users) {
-            participant(u).evidence.push({ type: 'edit', status, label: title, wiki, chars, source, share: 1, coauthors: users.length > 1 ? users : undefined });
+            participant(u).evidence.push({ type: 'edit', status, label: title, wiki, chars, unit, source, share: 1, coauthors: users.length > 1 ? users : undefined });
           }
           const refs = mapping.references ? Math.max(0, parseCount(get(row, 'references'))) : 0;
           if (refs > 0) credit(users, { type: 'reference', status: 'reference_added', label: title, wiki, quantity: refs, source });
@@ -250,7 +287,7 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           const chars = parseCount(get(row, 'characters'));
           const translated = isTranslated(title, wiki);
           const status = excludedWikis.has(wiki) ? 'wiki_excluded' : articleStatus(chars, scoring, translated);
-          credit(users, { type: 'article', status, label: title, wiki, chars, translated, source });
+          credit(users, { type: 'article', status, label: title, wiki, chars, translated, unit: unitPoints(status, chars, scoring), source });
         } else if (isItem) {
           credit(users, { type: 'wikidata', status: 'wikidata_item', label: normalizeItem(title), source });
         } else {
@@ -290,8 +327,8 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
         }
         const chars = parseCount(get(row, 'characters'));
         const translated = (mapping.translated && parseBool(get(row, 'translated')) === true) || isTranslated(title);
-        if (isNew) p.evidence.push({ type: 'article', status: articleStatus(chars, scoring, translated), label: title, chars, translated, source, share: 1 });
-        else p.evidence.push({ type: 'edit', status: editStatus(chars, scoring), label: title, chars, source, share: 1 });
+        const status = isNew ? articleStatus(chars, scoring, translated) : editStatus(chars, scoring);
+        p.evidence.push({ type: isNew ? 'article' : 'edit', status, label: title, chars, translated, unit: unitPoints(status, chars, scoring), source, share: 1 });
         return;
       }
 
@@ -355,7 +392,8 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
       if (!CRITERIA.includes(e.status) || e.share <= 0) continue;
       const quantity = e.quantity ?? 1;
       counts[e.status] += quantity;
-      if (active.has(e.status)) raw[e.status] += (Number(scoring.points[e.status]) || 0) * e.share * quantity;
+      const unit = e.unit ?? (Number(scoring.points[e.status]) || 0);
+      if (active.has(e.status)) raw[e.status] += unit * e.share * quantity;
     }
     const caps = scoring.rules.caps ?? {};
     const capped = [];

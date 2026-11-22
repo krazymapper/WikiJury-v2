@@ -468,6 +468,94 @@
               "total": 0
             }
           ]
+        },
+        {
+          "name": "grille Africa Wiki Challenge 2025",
+          "preset": "awc2025",
+          "scoring": {},
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 18
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 12
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 3,
+              "total": 7
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        },
+        {
+          "name": "grille AWC 2025 avec minimum de 2 500 caractères pour un article amélioré",
+          "preset": "awc2025",
+          "scoring": {
+            "thresholds": {
+              "article_improved_min_chars": 2500
+            }
+          },
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 18
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 7
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 6
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        },
+        {
+          "name": "#1Lib1Ref : références ajoutées seulement",
+          "preset": "onelib1ref",
+          "scoring": {},
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Bio Exemple",
+              "rank": 1,
+              "total": 1
+            },
+            {
+              "username": "Abla Exemple",
+              "rank": 2,
+              "total": 0
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 0
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 2,
+              "total": 0
+            }
+          ]
         }
       ]
     },

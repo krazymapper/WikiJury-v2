@@ -116,6 +116,24 @@ describe('modèles et plafonds', () => {
   });
 });
 
+describe('grilles de paliers', () => {
+  it('applique les points du palier atteint à chaque pièce', () => {
+    const awc = presets.presets.find((x) => x.id === 'awc2025');
+    const scoring = mergeScoring(mergeScoring(defaultScoring, awc.scoring), {});
+    const { participants } = computeRanking(loadDatasets(expected.suites[1]), scoring);
+    const codjo = participants.find((p) => p.username === 'Codjo Exemple');
+    expect(codjo.evidence.find((e) => e.label === 'Petit article')).toMatchObject({ status: 'article_created', unit: 3 });
+    expect(codjo.evidence.find((e) => e.label === 'Hwenuxo')).toMatchObject({ unit: 4 });
+  });
+
+  it('chaque modèle cite au moins une source ou se déclare sans barème officiel', () => {
+    for (const preset of presets.presets) {
+      expect(preset.checked_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      if (preset.id !== 'edition_simple') expect(preset.sources?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('pièces justificatives', () => {
   it('garde la trace d’un article trop court', () => {
     const { participants } = computeRanking(loadDatasets(expected.suites[0]), mergeScoring(defaultScoring));

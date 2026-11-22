@@ -74,3 +74,14 @@ def test_disabled_criterion_keeps_its_value():
     assert at.number_input(key="pts_wikidata_item").value == 3
     # 10,5 + 7 + 5,5 = 23 moins les points Wikidata (1 + 4 + 1) = 17
     assert any("17 points" in c.value for c in at.caption)
+
+
+def test_awc_grid_preset():
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.button[0].click().run()
+    at.selectbox(key="preset").set_value("awc2025").run()
+    assert not at.exception
+    assert "4000 = 12" in at.text_area(key="grid_created").value
+    # Données d'exemple : Abla 18 + Bio 12 + Codjo 7 (grille AWC 2025, co-auteurs partagés)
+    assert any("37 points" in c.value for c in at.caption)
+    assert any("symétrie" in w.value for w in at.warning)

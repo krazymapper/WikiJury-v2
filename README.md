@@ -31,18 +31,26 @@ Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doi
 
 ## Types de campagne
 
-Chaque campagne a son règlement : le jury choisit un **type de campagne**, puis **coche les critères retenus** et ajuste points et minimums. Un critère décoché ne rapporte rien et disparaît du classement, de l’export et du procès-verbal.
+Chaque campagne a son règlement : le jury choisit un **type de campagne**, puis **coche les critères retenus** et ajuste points, minimums et grilles. Un critère décoché ne rapporte rien et disparaît du classement, de l’export et du procès-verbal. Chaque modèle affiche ses **sources**, la date de vérification et ce qui n’a pas pu être vérifié.
 
-| Type de campagne | Critères actifs au départ |
-|---|---|
-| Campagne d’édition : barème par taille | articles créés selon deux paliers de taille (5 / 3 pts), élément Wikidata (3), photo utilisée (2), photo existante réutilisée (1) |
-| Campagne d’édition : décompte par article | article créé, article traduit, article amélioré, photo utilisée dans un article : 1 point chacun |
-| Concours photo (Wiki Loves…) | toute photo téléversée (1), bonus photo utilisée (0, à activer si le règlement le prévoit) |
-| Wiki for Sustainable Futures 2026 | article créé (10), article modifié (1), référence dans un article existant (2), élément Wikidata (5), photo téléversée (2), photo existante réutilisée (1) |
+| Type de campagne | Ce que le modèle applique | Origine |
+|---|---|---|
+| Édition : barème par taille (AWC 2021) | articles créés de 4 000 car. et plus (5 pts) ou de 1 500 à 3 999 (3), élément Wikidata (3), photo téléversée et utilisée (2), photo existante réutilisée (1) | règlement 2021 de l’Africa Wiki Challenge |
+| **Africa Wiki Challenge (grille 2025)** | 8 paliers selon les octets ajoutés : création de 12 à 1 point, modification de 10 à 1 point | grille 2025 d’OFWA ; deux paliers de modification non vérifiés (voir ci-dessous) |
+| Édition : décompte par article | 1 point par article créé, traduit, amélioré, et par photo utilisée | valeurs neutres, à adapter |
+| Mois de la contribution francophone | décompte par article | aucun barème commun publié |
+| #1Lib1Ref | 1 point par référence ajoutée | aucun barème officiel ; le mot-dièse n’est pas visible dans les exports |
+| AfroCreatives WikiProject | articles créés et améliorés, 1 point chacun | prix décernés par le jury sur la qualité : présélection seulement |
+| Concours photo Wiki Loves (Africa, Monuments, Folklore…) | 1 point par photo téléversée | lauréats choisis par un jury sur la qualité : préparation du jury seulement |
+| Wiki for Sustainable Futures 2026 (Bénin) | barème local de Wikimédiens du Bénin | barème communiqué par le groupe |
 
-**Notation des nouveaux articles** : *forfait par article*, avec un minimum de caractères pour être éligible, ou *selon la taille*, avec deux paliers. **Article amélioré** : article existant ayant reçu au moins le minimum de caractères fixé ; à 0, toute modification compte.
+**Notation des nouveaux articles** : *forfait par article* (avec un minimum de caractères), *selon la taille* (deux paliers) ou *grille de paliers du concours* (autant de paliers que nécessaire, une ligne « caractères = points » par palier). Les articles améliorés peuvent aussi suivre une grille.
 
-Les valeurs du décompte par article et du concours photo sont des points de départ neutres (1 point, aucun minimum) : fixez-les selon votre règlement. Les types de campagne sont définis dans [`shared/presets.json`](shared/presets.json) ; en ajouter un revient à ajouter une entrée dans ce fichier.
+**Points non vérifiés dans les modèles** :
+- Africa Wiki Challenge : les paliers de modification de 100 à 499 octets (2 pts) et de 50 à 99 octets (1,5 pt) n’apparaissaient pas dans les extraits consultés ; ils reprennent la grille de création. Les points Wikidata et Commons de 2026 ne sont pas publiés : ces critères sont désactivés.
+- Les sections locales d’une campagne ont souvent leurs propres règles (par exemple un minimum de 3 000 octets) : ajustez le modèle à votre règlement.
+
+Les modèles sont définis dans [`shared/presets.json`](shared/presets.json). Ajouter une campagne revient à y ajouter une entrée, avec ses sources.
 
 ### Articles traduits
 

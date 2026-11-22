@@ -1,16 +1,123 @@
 {
-  "_comment": "Types de campagne proposés dans l'interface. Chaque modèle complète scoring.default.json ; « enabled » liste les critères actifs. Le jury peut ensuite modifier chaque valeur.",
+  "_comment": "Types de campagne proposés dans l'interface. Chaque modèle complète scoring.default.json ; « enabled » liste les critères actifs ; « grids » donne des grilles de paliers [minimum de caractères, points]. « sources » et « checked_on » indiquent d'où viennent les valeurs ; « unverified » liste ce qui n'a pas pu être vérifié. Le jury peut ensuite modifier chaque valeur.",
   "presets": [
     {
       "id": "standard",
-      "label": "Campagne d'édition : barème par taille",
-      "description": "Points selon la taille des nouveaux articles (deux paliers), éléments Wikidata et photos utilisées.",
+      "label": "Édition : barème par taille (AWC 2021)",
+      "description": "Deux paliers selon la taille des nouveaux articles, éléments Wikidata et photos. Valeurs reprises du barème de l'Africa Wiki Challenge 2021.",
+      "sources": [
+        {
+          "title": "Africa Wiki Challenge/Participate (2021)",
+          "url": "https://meta.wikimedia.org/wiki/Africa_Wiki_Challenge/Participate"
+        }
+      ],
+      "checked_on": "2026-11-22",
       "scoring": {}
     },
     {
+      "id": "awc2025",
+      "label": "Africa Wiki Challenge (grille 2025)",
+      "description": "Grille officielle d'OFWA : 8 paliers pour les créations (12 à 1 point) et pour les modifications (10 à 1 point), selon les octets ajoutés. Les sections locales peuvent ajouter leurs propres règles (par exemple un minimum de 3 000 octets).",
+      "sources": [
+        {
+          "title": "Event:Africa Wiki Challenge 2025/Participate",
+          "url": "https://meta.wikimedia.org/wiki/Event:Africa_Wiki_Challenge_2025/Participate"
+        },
+        {
+          "title": "Event:Africa Wiki Challenge 2026/FAQs",
+          "url": "https://meta.wikimedia.org/wiki/Event:Africa_Wiki_Challenge_2026/FAQs"
+        }
+      ],
+      "checked_on": "2026-11-22",
+      "unverified": [
+        "Paliers de modification 100–499 octets (2 pts) et 50–99 octets (1,5 pt) : absents des extraits consultés, repris par symétrie avec la grille de création.",
+        "Points des contributions Wikidata et Commons : annoncés pour 2026 sans valeurs publiées ; critères désactivés."
+      ],
+      "scoring": {
+        "rules": {
+          "article_mode": "grid",
+          "enabled": [
+            "article_created",
+            "article_edited"
+          ]
+        },
+        "grids": {
+          "created": [
+            [
+              4000,
+              12
+            ],
+            [
+              3000,
+              8
+            ],
+            [
+              2000,
+              6
+            ],
+            [
+              1000,
+              4
+            ],
+            [
+              500,
+              3
+            ],
+            [
+              100,
+              2
+            ],
+            [
+              50,
+              1.5
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "edited": [
+            [
+              4000,
+              10
+            ],
+            [
+              3000,
+              8
+            ],
+            [
+              2000,
+              6
+            ],
+            [
+              1000,
+              4
+            ],
+            [
+              500,
+              3
+            ],
+            [
+              100,
+              2
+            ],
+            [
+              50,
+              1.5
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
       "id": "edition_simple",
-      "label": "Campagne d'édition : décompte par article",
+      "label": "Édition : décompte par article",
       "description": "Un point par article créé, traduit ou amélioré, et par photo utilisée dans un article. Fixez les minimums de caractères du règlement : à 0, toute création ou modification compte.",
+      "checked_on": "2026-11-22",
       "scoring": {
         "rules": {
           "article_mode": "flat",
@@ -30,9 +137,118 @@
       }
     },
     {
+      "id": "mcf",
+      "label": "Mois de la contribution francophone",
+      "description": "Série d'ateliers coordonnée chaque mois de mars avec WikiFranca : aucun barème de points commun n'est publié. Décompte neutre par article, à adapter au règlement local.",
+      "sources": [
+        {
+          "title": "WikiAfrica Hour/Newsroom (édition 2026)",
+          "url": "https://meta.wikimedia.org/wiki/WikiAfrica_Hour/Newsroom"
+        },
+        {
+          "title": "Mois de la Contribution Francophone 2025 en République du Congo",
+          "url": "https://meta.wikimedia.org/wiki/Event:Mois_de_la_Contribution_Francophone_2025_en_R%C3%A9publique_du_Congo"
+        }
+      ],
+      "checked_on": "2026-11-22",
+      "unverified": [
+        "Pas de barème officiel : les valeurs sont un point de départ neutre."
+      ],
+      "scoring": {
+        "rules": {
+          "article_mode": "flat",
+          "enabled": [
+            "article_created",
+            "article_translated",
+            "article_edited",
+            "photo_uploaded_used"
+          ]
+        },
+        "points": {
+          "article_created": 1,
+          "article_translated": 1,
+          "article_edited": 1,
+          "photo_uploaded_used": 1
+        }
+      }
+    },
+    {
+      "id": "onelib1ref",
+      "label": "#1Lib1Ref",
+      "description": "Campagne « un bibliothécaire, une référence » : seules les références ajoutées comptent, un point chacune. La campagne n'a pas de barème officiel ; le mot-dièse #1Lib1Ref du résumé de modification n'apparaît pas dans les exports.",
+      "sources": [
+        {
+          "title": "The Wikipedia Library/1Lib1Ref/Participate",
+          "url": "https://meta.wikimedia.org/wiki/The_Wikipedia_Library/1Lib1Ref/Participate"
+        },
+        {
+          "title": "1LiB1RefNG Campaign 2025",
+          "url": "https://meta.wikimedia.org/wiki/1LiB1RefNG_Campaign_2025"
+        }
+      ],
+      "checked_on": "2026-11-22",
+      "scoring": {
+        "rules": {
+          "enabled": [
+            "reference_added"
+          ]
+        },
+        "points": {
+          "reference_added": 1
+        }
+      }
+    },
+    {
+      "id": "afrocreatives",
+      "label": "AfroCreatives WikiProject",
+      "description": "Les prix sont décernés par le jury sur la qualité (par exemple le prix Écran d'or pour les contributions les plus substantielles et les mieux rédigées). Ce modèle sert de présélection : articles créés et améliorés, sans barème officiel.",
+      "sources": [
+        {
+          "title": "AfroCreatives WikiProject +film",
+          "url": "https://meta.wikimedia.org/wiki/AfroCreatives_WikiProject/Afro_Creatives_WikiProject_%2Bfilm/fr"
+        },
+        {
+          "title": "Wiki Loves AfroLiterature",
+          "url": "https://meta.wikimedia.org/wiki/Wiki_Loves_AfroLiterature"
+        }
+      ],
+      "checked_on": "2026-11-22",
+      "unverified": [
+        "Pas de barème officiel : le classement aide le jury, il ne désigne pas les lauréats."
+      ],
+      "scoring": {
+        "rules": {
+          "article_mode": "flat",
+          "enabled": [
+            "article_created",
+            "article_edited"
+          ]
+        },
+        "points": {
+          "article_created": 1,
+          "article_edited": 1
+        }
+      }
+    },
+    {
       "id": "photo",
-      "label": "Concours photo (Wiki Loves…)",
-      "description": "Toutes les photos téléversées comptent, utilisées ou non ; le bonus « photo utilisée » est disponible si le règlement le prévoit.",
+      "label": "Concours photo Wiki Loves (Africa, Monuments, Folklore…)",
+      "description": "Les lauréats sont choisis par un jury sur la qualité des images (Montage, notes des jurés). Ce modèle compte les photos téléversées par participant pour préparer ce travail, pas pour désigner les gagnants.",
+      "sources": [
+        {
+          "title": "Wiki Loves Africa/National Jury Process Guidelines 2026",
+          "url": "https://meta.wikimedia.org/wiki/Wiki_Loves_Africa/National_Jury_Process_Guidelines_2026"
+        },
+        {
+          "title": "Commons:Wiki Loves Monuments 2026/Organise",
+          "url": "https://commons.wikimedia.org/wiki/Commons:Wiki_Loves_Monuments_2026/Organise"
+        },
+        {
+          "title": "Commons:Wiki Loves Folklore 2026/Rules",
+          "url": "https://commons.wikimedia.org/wiki/Commons:Wiki_Loves_Folklore_2026/Rules"
+        }
+      ],
+      "checked_on": "2026-11-22",
       "scoring": {
         "rules": {
           "enabled": [
@@ -48,8 +264,15 @@
     },
     {
       "id": "wsf2026",
-      "label": "Wiki for Sustainable Futures 2026",
-      "description": "Barème communiqué par Wikimédiens du Bénin (novembre 2026).",
+      "label": "Wiki for Sustainable Futures 2026 (Bénin)",
+      "description": "Barème local communiqué par Wikimédiens du Bénin (novembre 2026). La campagne mondiale ne fixe pas de barème.",
+      "sources": [
+        {
+          "title": "Wiki for Sustainable Futures 2026",
+          "url": "https://meta.wikimedia.org/wiki/Wiki_for_Sustainable_Futures_2026"
+        }
+      ],
+      "checked_on": "2026-11-22",
       "scoring": {
         "rules": {
           "article_mode": "flat",

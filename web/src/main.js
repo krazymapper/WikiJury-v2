@@ -9,7 +9,7 @@ import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
 import presetsSpec from '../../shared/presets.json';
 import { detectKind, mapColumns, missingFields } from './engine/columns.js';
-import { ARTICLE_MODES, COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, enabledCriteria, mergeScoring, shownCriteria, wikisInData } from './engine/scoring.js';
+import { ARTICLE_MODES, COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, enabledCriteria, isGridCriterion, mergeScoring, shownCriteria, wikisInData } from './engine/scoring.js';
 import { normalizeUsername } from './engine/normalize.js';
 import { download, parseCsvText, parseFile, rankingToCsv, slugify } from './io.js';
 import { SAMPLE_FILES } from './sample.js';
@@ -80,7 +80,7 @@ function h(tag, attrs = {}, ...children) {
 }
 
 const isScoringValid = () =>
-  state.scoring.rules.article_mode === 'flat' ||
+  state.scoring.rules.article_mode !== 'tiers' ||
   state.scoring.thresholds.article_short_min_chars < state.scoring.thresholds.article_long_min_chars;
 
 /* ---------------------------------------------------------------- calcul */
@@ -259,19 +259,29 @@ let scoringUi = null;
 function renderScoring() {
   if (!scoringUi) scoringUi = buildScoring();
   const sc = state.scoring;
-  const flat = sc.rules.article_mode === 'flat';
+  const mode = sc.rules.article_mode;
+  const flat = mode !== 'tiers';
+  const gridCreated = mode === 'grid';
+  const gridEdited = Boolean(sc.grids?.edited?.length);
   const enabled = new Set(enabledCriteria(sc));
   for (const c of CRITERIA) {
     const on = enabled.has(c);
     scoringUi.labels[c].textContent = criterionLabel(c, sc);
     scoringUi.toggles[c].checked = on;
-    scoringUi.points[c].disabled = !on;
+    const byGrid = (gridCreated && (c === 'article_created' || c === 'article_translated')) || (gridEdited && c === 'article_edited');
+    scoringUi.points[c].disabled = !on || byGrid;
+    scoringUi.points[c].title = byGrid ? 'Points fixés par la grille de paliers' : '';
     scoringUi.rows[c].classList.toggle('is-off', !on);
     scoringUi.rows[c].hidden = flat ? ['article_long', 'article_short'].includes(c) : ['article_created', 'article_translated'].includes(c);
     if (document.activeElement !== scoringUi.points[c]) scoringUi.points[c].value = String(sc.points[c]);
   }
   scoringUi.mode.value = sc.rules.article_mode;
-  scoringUi.thresholdRows.article_created_min_chars.hidden = !flat;
+  scoringUi.thresholdRows.article_created_min_chars.hidden = mode !== 'flat';
+  scoringUi.gridRows.created.hidden = !gridCreated;
+  scoringUi.gridRows.edited.hidden = !enabled.has('article_edited');
+  for (const key of ['created', 'edited']) {
+    if (document.activeElement !== scoringUi.grids[key]) scoringUi.grids[key].value = formatGrid(sc.grids?.[key]);
+  }
   scoringUi.thresholdRows.article_long_min_chars.hidden = flat;
   scoringUi.thresholdRows.article_short_min_chars.hidden = flat;
   scoringUi.thresholdRows.article_improved_min_chars.hidden = !enabled.has('article_edited');
@@ -292,6 +302,12 @@ function renderScoring() {
   scoringUi.preset.value = state.preset;
   const preset = presetsSpec.presets.find((x) => x.id === state.preset);
   scoringUi.presetHelp.textContent = preset?.description ?? '';
+  mount(scoringUi.presetSources,
+    preset?.unverified?.length ? h('ul', { class: 'preset-warn' }, ...preset.unverified.map((t) => h('li', { text: t }))) : null,
+    preset?.sources?.length
+      ? h('p', { class: 'rules-help' }, `Sources consultées le ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(preset.checked_on))} : `,
+          ...preset.sources.flatMap((src, i) => [i ? ', ' : '', h('a', { href: src.url, target: '_blank', rel: 'noopener noreferrer', text: src.title })]))
+      : null);
   for (const c of CRITERIA) {
     const cap = sc.rules.caps?.[c];
     if (document.activeElement !== scoringUi.caps[c]) scoringUi.caps[c].value = cap ? String(cap) : '';
@@ -341,6 +357,27 @@ function buildScoring() {
     onchange: (e) => applyPreset(e.target.value),
   }, ...presetsSpec.presets.map((x) => h('option', { value: x.id, text: x.label })));
   ui.presetHelp = h('p', { class: 'rules-help' });
+  ui.presetSources = h('div', { class: 'preset-sources' });
+  ui.grids = {};
+  ui.gridRows = {};
+  for (const [key, label] of [['created', 'Grille des articles créés'], ['edited', 'Grille des articles améliorés (vide : barème fixe)']]) {
+    const id = `grid-${key}`;
+    ui.grids[key] = h('textarea', {
+      id,
+      class: 'grid-input',
+      rows: '4',
+      spellcheck: 'false',
+      placeholder: '4000 = 12\n1000 = 4\n1 = 1',
+      'aria-describedby': 'grid-help',
+      onchange: (e) => {
+        state.scoring.grids = { ...(state.scoring.grids ?? {}), [key]: parseGrid(e.target.value) };
+        e.target.value = formatGrid(state.scoring.grids[key]);
+        persist();
+        recompute();
+      },
+    });
+    ui.gridRows[key] = h('div', { class: 'grid-row' }, h('label', { for: id, class: 'rules-label', text: label }), ui.grids[key]);
+  }
   ui.mode = h('select', {
     id: 'article-mode',
     class: 'select select-sm',
@@ -453,7 +490,8 @@ function buildScoring() {
     h('div', { class: 'preset' },
       h('label', { for: 'preset', class: 'rules-label', text: 'Type de campagne' }),
       ui.preset,
-      ui.presetHelp),
+      ui.presetHelp,
+      ui.presetSources),
     h('div', { class: 'preset' },
       h('label', { for: 'article-mode', class: 'rules-label', text: 'Notation des nouveaux articles' }),
       ui.mode),
@@ -464,6 +502,9 @@ function buildScoring() {
       threshold('article_long_min_chars', 'Article long à partir de'),
       threshold('article_short_min_chars', 'Article court à partir de'),
       threshold('article_improved_min_chars', 'Minimum ajouté pour un article amélioré'),
+      ui.gridRows.created,
+      ui.gridRows.edited,
+      h('p', { id: 'grid-help', class: 'rules-help', text: 'Une ligne par palier : caractères minimum = points. Le palier le plus élevé atteint s’applique ; sous le dernier palier, la contribution ne rapporte rien.' }),
       ui.error),
     h('div', { class: 'rules' },
       h('label', { for: 'rule-coauthors', class: 'rules-label', text: 'Pages créées à plusieurs' }),
@@ -473,6 +514,22 @@ function buildScoring() {
       ui.capsBox),
   );
   return ui;
+}
+
+const numberFr = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2, useGrouping: false });
+
+function formatGrid(grid) {
+  return [...(grid ?? [])].sort((a, b) => b[0] - a[0]).map(([min, pts]) => `${min} = ${numberFr.format(pts)}`).join('\n');
+}
+
+/** Lit « 4000 = 12 » ou « 50 : 1,5 », une ligne par palier ; ignore les lignes illisibles. */
+function parseGrid(text) {
+  const tiers = [];
+  for (const line of String(text).split(/[\n;]+/)) {
+    const m = line.match(/^\s*(\d+)\s*[=:→-]+\s*(\d+(?:[.,]\d+)?)\s*$/);
+    if (m) tiers.push([Number(m[1]), Number(m[2].replace(',', '.'))]);
+  }
+  return tiers.sort((a, b) => b[0] - a[0]);
 }
 
 function toggleCriterion(criterion, on) {
@@ -489,6 +546,7 @@ function applyPreset(id) {
   const { coauthors, excluded_wikis } = state.scoring.rules;
   state.preset = preset.id;
   state.scoring = mergeScoring(mergeScoring(defaultScoring, preset.scoring), { rules: { coauthors, excluded_wikis } });
+  state.scoring.grids = { created: [], edited: [], ...(preset.scoring.grids ?? {}) };
   persist();
   recompute();
 }
@@ -550,7 +608,8 @@ function notices() {
   const { stats, participants } = state.result;
   const items = [];
   const unknownPhotos = participants.reduce((n, p) => n + p.evidence.filter((e) => e.status === 'photo_usage_unknown' && e.share > 0).length, 0);
-  if (unknownPhotos > 0) {
+  const photosScored = ['photo_uploaded', 'photo_uploaded_used'].some((c) => enabledCriteria(state.scoring).includes(c));
+  if (unknownPhotos > 0 && photosScored) {
     items.push(`${plural(unknownPhotos, 'photo téléversée n’est pas notée', 'photos téléversées ne sont pas notées')} : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.`);
   }
   if (stats.ignored > 0) {
@@ -586,7 +645,7 @@ function legend() {
   return h('ul', { class: 'legend', 'aria-label': 'Légende des critères' },
     ...shownCriteria(state.scoring).map((c) => h('li', {},
       h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
-      `${CRITERION_SHORT[c]} (${plural(state.scoring.points[c], 'pt', 'pts')})`)));
+      `${CRITERION_SHORT[c]} (${isGridCriterion(c, state.scoring) ? 'grille' : plural(state.scoring.points[c], 'pt', 'pts')})`)));
 }
 
 function warningsBlock(warnings) {
@@ -652,7 +711,7 @@ const STATUS_TEXT = {
   photo_uploaded_used: (e) => `Utilisée ${plural(e.usage, 'fois', 'fois')}`,
   article_edited: (e) => (e.chars !== undefined ? `Article amélioré : ${fmt.format(e.chars)} car. ajoutés` : 'Article existant modifié'),
   edit_too_small: (e) => `Modification sous le minimum : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.thresholds.article_improved_min_chars)}`,
-  article_created: (e) => `Article créé : ${fmt.format(e.chars)} car.`,
+  article_created: (e) => `Article créé : ${fmt.format(e.chars)} car.${e.unit !== undefined ? ` (palier à ${fmt.format(e.unit)} pt)` : ''}`,
   article_translated: (e) => `Article traduit : ${fmt.format(e.chars)} car.`,
   reference_added: (e) => plural(e.quantity, 'référence ajoutée', 'références ajoutées'),
   photo_unused: () => 'Non utilisée dans un article',
@@ -703,11 +762,12 @@ function openSheet(username, opener) {
   const pointsRows = shownCriteria(state.scoring).map((c) => h('tr', {},
     h('th', { scope: 'row' }, h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }), criterionLabel(c, state.scoring)),
     h('td', { text: fmt.format(p.counts[c]) }),
-    h('td', { text: `× ${state.scoring.points[c]}` }),
+    h('td', { text: isGridCriterion(c, state.scoring) ? 'grille' : `× ${state.scoring.points[c]}` }),
     h('td', { class: 'num-strong' }, fmt.format(p.points[c]), p.capped.includes(c) ? h('span', { class: 'capped', text: ' plafonné' }) : null)));
 
   const MAX_ITEMS = 150;
-  const entryPoints = (e) => (CRITERIA.includes(e.status) && e.share > 0 ? state.scoring.points[e.status] * e.share * (e.quantity ?? 1) : 0);
+  const active = new Set(enabledCriteria(state.scoring));
+  const entryPoints = (e) => (active.has(e.status) && e.share > 0 ? (e.unit ?? state.scoring.points[e.status]) * e.share * (e.quantity ?? 1) : 0);
   const groups = EVIDENCE_GROUPS.map(([type, title]) => {
     // Le bonus « photo utilisée » est fusionné avec la ligne de la photo.
     const items = p.evidence.filter((e) => e.type === type && !e.bonus);
@@ -773,8 +833,10 @@ function renderPrint() {
     h('h1', { text: state.campaign || 'Classement du concours' }),
     h('p', { text: `Procès-verbal établi le ${date} avec WikiJury.` }),
     h('h2', { text: 'Barème appliqué' }),
-    h('table', {}, h('tbody', {}, ...shownCriteria(state.scoring).map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
+    h('table', {}, h('tbody', {}, ...shownCriteria(state.scoring).map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: isGridCriterion(c, state.scoring) ? 'selon la grille' : plural(state.scoring.points[c], 'point', 'points') }))))),
     h('p', { text: `Modèle : ${presetsSpec.presets.find((x) => x.id === state.preset)?.label ?? 'personnalisé'}. Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.${state.scoring.rules.excluded_wikis.length ? ` Wikis non retenus : ${state.scoring.rules.excluded_wikis.join(', ')}.` : ''}${Object.keys(state.scoring.rules.caps ?? {}).length ? ` Plafonds par participant : ${Object.entries(state.scoring.rules.caps).map(([c, v]) => `${CRITERION_SHORT[c]} ${v} pts`).join(', ')}.` : ''}` }),
+    state.scoring.rules.article_mode === 'grid' ? h('p', { text: `Grille des articles créés : ${formatGrid(state.scoring.grids?.created).replace(/\n/g, ' ; ')}.` }) : null,
+    state.scoring.grids?.edited?.length ? h('p', { text: `Grille des articles améliorés : ${formatGrid(state.scoring.grids.edited).replace(/\n/g, ' ; ')}.` }) : null,
     h('h2', { text: 'Classement' }),
     h('table', {},
       h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...shownCriteria(state.scoring).map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),

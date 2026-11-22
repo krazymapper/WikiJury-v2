@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, criterionLabel, shownCriteria } from './engine/scoring.js';
+import { ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, criterionLabel, isGridCriterion, shownCriteria } from './engine/scoring.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -52,6 +52,8 @@ function cell(value) {
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+const gridText = (grid) => [...(grid ?? [])].sort((a, b) => b[0] - a[0]).map(([min, pts]) => `${min} car. = ${String(pts).replace('.', ',')} pt`).join(' | ');
+
 /** Export du classement, séparateur « ; » et BOM pour Excel en français. */
 export function rankingToCsv(participants, scoring) {
   const CRITERIA = shownCriteria(scoring);
@@ -71,8 +73,10 @@ export function rankingToCsv(participants, scoring) {
   ]);
   const scoringLine = [
     '# Barème',
-    ...CRITERIA.map((c) => `${criterionLabel(c, scoring)} = ${scoring.points[c]} pt`),
+    ...CRITERIA.map((c) => `${criterionLabel(c, scoring)} = ${isGridCriterion(c, scoring) ? 'grille' : `${scoring.points[c]} pt`}`),
     `Articles : ${ARTICLE_MODES[scoring.rules.article_mode ?? 'tiers']}`,
+    ...(scoring.rules.article_mode === 'grid' ? [`Grille créations : ${gridText(scoring.grids?.created)}`] : []),
+    ...(scoring.grids?.edited?.length ? [`Grille améliorations : ${gridText(scoring.grids.edited)}`] : []),
     `Co-auteurs : ${COAUTHOR_RULES[scoring.rules.coauthors]}`,
     ...(scoring.rules.excluded_wikis.length ? [`Wikis non retenus : ${scoring.rules.excluded_wikis.join(', ')}`] : []),
     ...Object.entries(scoring.rules.caps ?? {}).map(([c, v]) => `Plafond ${CRITERION_SHORT[c]} = ${v} pts`),

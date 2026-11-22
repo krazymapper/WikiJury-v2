@@ -173,3 +173,11 @@ def test_caps_are_reported():
     scoring = merge_scoring(merge_scoring(DEFAULT, next(p for p in PRESETS if p["id"] == "wsf2026")["scoring"]), {"rules": {"caps": {"article_created": 15}}})
     top = compute_ranking(load_datasets(SUITES[1]), scoring).participants[0]
     assert top.username == "Codjo Exemple" and top.capped == ["article_created"]
+
+
+def test_grid_points_per_evidence():
+    awc = next(p for p in PRESETS if p["id"] == "awc2025")
+    result = compute_ranking(load_datasets(SUITES[1]), merge_scoring(DEFAULT, awc["scoring"]))
+    codjo = next(p for p in result.participants if p.username == "Codjo Exemple")
+    petit = next(e for e in codjo.evidence if e["label"] == "Petit article")
+    assert petit["status"] == "article_created" and petit["unit"] == 3

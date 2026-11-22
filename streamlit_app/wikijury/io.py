@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 from typing import Any
 
-from .scoring import ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, Participant, criterion_label, shown_criteria
+from .scoring import ARTICLE_MODES, COAUTHOR_RULES, CRITERION_SHORT, Participant, criterion_label, is_grid_criterion, shown_criteria
 
 MAX_FILE_BYTES = 25 * 1024 * 1024
 
@@ -92,6 +92,10 @@ def _cell(value: Any) -> str:
     return s
 
 
+def _grid_text(grid) -> str:
+    return " | ".join(f"{m} car. = {str(p).replace('.', ',')} pt" for m, p in sorted(grid or [], key=lambda t: -t[0]))
+
+
 def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> str:
     """Même format que l'export de la version web (séparateur « ; », BOM pour Excel)."""
     CRITERIA = shown_criteria(scoring)
@@ -109,9 +113,11 @@ def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> 
     lines.append([])
     lines.append(
         ["# Barème"]
-        + [f"{criterion_label(c, scoring)} = {scoring['points'][c]} pt" for c in CRITERIA]
+        + [f"{criterion_label(c, scoring)} = {'grille' if is_grid_criterion(c, scoring) else str(scoring['points'][c]) + ' pt'}" for c in CRITERIA]
         + [
             f"Articles : {ARTICLE_MODES[scoring['rules'].get('article_mode', 'tiers')]}",
+            *([f"Grille créations : {_grid_text(scoring.get('grids', {}).get('created'))}"] if scoring["rules"].get("article_mode") == "grid" else []),
+            *([f"Grille améliorations : {_grid_text(scoring['grids']['edited'])}"] if scoring.get("grids", {}).get("edited") else []),
             f"Co-auteurs : {COAUTHOR_RULES[scoring['rules']['coauthors']]}",
         ]
         + (
