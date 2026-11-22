@@ -20,8 +20,11 @@
 
   --c-article_long: #006699;
   --c-article_short: #7db9d6;
+  --c-article_edited: #a3adbb;
+  --c-reference_added: #b5537a;
   --c-wikidata_item: #339966;
-  --c-photo_uploaded_used: #d9a23a;
+  --c-photo_uploaded: #ecc977;
+  --c-photo_uploaded_used: #c98a1b;
   --c-photo_existing_used: #8e6fb8;
 
   --f-display: 'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif;
@@ -522,6 +525,30 @@ a:hover {
   accent-color: var(--blue);
 }
 
+.preset {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.9rem;
+}
+
+.caps {
+  margin-top: 0.6rem;
+}
+
+.caps summary {
+  cursor: pointer;
+}
+
+.caps .rules-help {
+  margin: 0.4rem 0 0.6rem;
+}
+
+.capped {
+  color: var(--ochre);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
 .field-error {
   margin: 0;
   padding: 0.55rem 0.7rem;
@@ -541,6 +568,9 @@ a:hover {
 
 .c-article_long { background-color: var(--c-article_long); }
 .c-article_short { background-color: var(--c-article_short); }
+.c-article_edited { background-color: var(--c-article_edited); }
+.c-reference_added { background-color: var(--c-reference_added); }
+.c-photo_uploaded { background-color: var(--c-photo_uploaded); }
 .c-wikidata_item { background-color: var(--c-wikidata_item); }
 .c-photo_uploaded_used { background-color: var(--c-photo_uploaded_used); }
 .c-photo_existing_used { background-color: var(--c-photo_existing_used); }

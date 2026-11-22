@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
+import presets from '../../shared/presets.json';
 import expected from '../../shared/fixtures/expected.json';
 import { detectKind, mapColumns, missingFields } from '../src/engine/columns.js';
 import { normalizeUsername, normalizeTitle, parseBool, parseCount } from '../src/engine/normalize.js';
@@ -79,7 +80,8 @@ for (const suite of expected.suites) {
 
     for (const scenario of suite.scenarios) {
       it(scenario.name, () => {
-        const scoring = mergeScoring(defaultScoring, scenario.scoring);
+        const preset = presets.presets.find((x) => x.id === (scenario.preset ?? 'standard'));
+        const scoring = mergeScoring(mergeScoring(defaultScoring, preset.scoring), scenario.scoring);
         const { participants } = computeRanking(datasets, scoring, { excluded: scenario.excluded });
         const got = participants.map((p) => ({
           username: p.username,
@@ -99,6 +101,20 @@ for (const suite of expected.suites) {
     });
   });
 }
+
+describe('modèles et plafonds', () => {
+  it('chaque modèle de barème ne contient que des critères connus', () => {
+    for (const preset of presets.presets) {
+      for (const key of Object.keys(preset.scoring.points ?? {})) expect(Object.keys(defaultScoring.points)).toContain(key);
+    }
+  });
+
+  it('signale les critères plafonnés', () => {
+    const scoring = mergeScoring(mergeScoring(defaultScoring, presets.presets[1].scoring), { rules: { caps: { article_short: 15 } } });
+    const { participants } = computeRanking(loadDatasets(expected.suites[1]), scoring);
+    expect(participants[0]).toMatchObject({ username: 'Codjo Exemple', capped: ['article_short'] });
+  });
+});
 
 describe('pièces justificatives', () => {
   it('garde la trace d’un article trop court', () => {

@@ -7,12 +7,16 @@
   "points": {
     "article_long": 5,
     "article_short": 3,
+    "article_edited": 0,
+    "reference_added": 0,
     "wikidata_item": 3,
+    "photo_uploaded": 0,
     "photo_uploaded_used": 2,
     "photo_existing_used": 1
   },
   "rules": {
     "coauthors": "split",
-    "excluded_wikis": []
+    "excluded_wikis": [],
+    "caps": {}
   }
 }

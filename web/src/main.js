@@ -7,6 +7,7 @@ import './styles.css';
 
 import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
+import presetsSpec from '../../shared/presets.json';
 import { detectKind, mapColumns, missingFields } from './engine/columns.js';
 import { COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, mergeScoring, wikisInData } from './engine/scoring.js';
 import { normalizeUsername } from './engine/normalize.js';
@@ -23,6 +24,7 @@ const state = {
   files: [],
   scoring: mergeScoring(defaultScoring, stored.scoring),
   campaign: stored.campaign ?? '',
+  preset: stored.preset ?? 'standard',
   excluded: stored.excluded ?? [],
   result: { participants: [], warnings: [], stats: { deleted: 0, ignored: 0 } },
 };
@@ -40,7 +42,7 @@ function persist() {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ scoring: state.scoring, campaign: state.campaign, excluded: state.excluded }),
+      JSON.stringify({ scoring: state.scoring, campaign: state.campaign, excluded: state.excluded, preset: state.preset }),
     );
   } catch {
     /* stockage indisponible (navigation privée) : sans conséquence */
@@ -272,6 +274,14 @@ function renderScoring() {
   }
   scoringUi.error.hidden = valid;
   scoringUi.coauthors.value = state.scoring.rules.coauthors;
+  scoringUi.preset.value = state.preset;
+  for (const c of CRITERIA) {
+    const cap = state.scoring.rules.caps?.[c];
+    if (document.activeElement !== scoringUi.caps[c]) scoringUi.caps[c].value = cap ? String(cap) : '';
+    scoringUi.capLabels[c].textContent = CRITERION_SHORT[c];
+  }
+  const activeCaps = CRITERIA.filter((c) => Number(state.scoring.rules.caps?.[c]) > 0).length;
+  scoringUi.capsSummary.textContent = activeCaps ? `Plafonds par participant (${activeCaps} actif${activeCaps > 1 ? 's' : ''})` : 'Plafonds par participant';
   renderWikis();
 }
 
@@ -306,7 +316,42 @@ function renderWikis() {
 }
 
 function buildScoring() {
-  const ui = { labels: {}, points: {}, thresholds: {}, error: null };
+  const ui = { labels: {}, points: {}, thresholds: {}, error: null, caps: {}, capLabels: {} };
+  ui.preset = h('select', {
+    id: 'preset',
+    class: 'select select-sm',
+    onchange: (e) => applyPreset(e.target.value),
+  }, ...presetsSpec.presets.map((x) => h('option', { value: x.id, text: x.label })));
+  const capRows = CRITERIA.map((c) => {
+    const id = `cap-${c}`;
+    ui.capLabels[c] = h('label', { for: id, class: 'score-label' });
+    ui.caps[c] = h('input', {
+      id,
+      type: 'number',
+      inputmode: 'numeric',
+      min: '0',
+      step: '10',
+      placeholder: 'aucun',
+      onchange: (e) => {
+        const v = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+        const caps = { ...(state.scoring.rules.caps ?? {}) };
+        if (v > 0) caps[c] = v;
+        else delete caps[c];
+        state.scoring.rules.caps = caps;
+        persist();
+        recompute();
+      },
+    });
+    return h('div', { class: 'score-row' },
+      h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }),
+      ui.capLabels[c],
+      h('span', { class: 'score-input is-wide' }, ui.caps[c], h('span', { class: 'unit', 'aria-hidden': 'true', text: 'pts max' })));
+  });
+  ui.capsSummary = h('summary', { class: 'rules-label' });
+  ui.capsBox = h('details', { class: 'caps' },
+    ui.capsSummary,
+    h('p', { class: 'rules-help', text: 'Limite les points qu’un participant peut obtenir sur un critère, par exemple pour éviter qu’un grand nombre de petites modifications l’emporte sur le contenu. Laissez vide pour ne rien limiter.' }),
+    h('div', { class: 'score-list' }, ...capRows));
   ui.coauthors = h('select', {
     id: 'rule-coauthors',
     class: 'select select-sm',
@@ -341,10 +386,10 @@ function buildScoring() {
       id,
       type: 'number',
       inputmode: 'numeric',
-      min: '1',
+      min: '0',
       step: '100',
       onchange: (e) => {
-        state.scoring.thresholds[key] = Math.max(1, Math.trunc(Number(e.target.value) || 0));
+        state.scoring.thresholds[key] = Math.max(0, Math.trunc(Number(e.target.value) || 0));
         e.target.value = String(state.scoring.thresholds[key]);
         persist();
         recompute();
@@ -364,6 +409,7 @@ function buildScoring() {
   });
 
   mount($('[data-scoring]'), 
+    h('div', { class: 'preset' }, h('label', { for: 'preset', class: 'rules-label', text: 'Modèle de barème' }), ui.preset),
     h('div', { class: 'score-list' }, ...pointsRows),
     h('div', { class: 'thresholds' },
       threshold('article_long_min_chars', 'Article long à partir de'),
@@ -373,9 +419,19 @@ function buildScoring() {
       h('label', { for: 'rule-coauthors', class: 'rules-label', text: 'Pages créées à plusieurs' }),
       ui.coauthors,
       h('p', { class: 'rules-help', text: 'L’export du Dashboard liste tous les participants ayant modifié une page, sans dire qui l’a créée.' }),
-      ui.wikis),
+      ui.wikis,
+      ui.capsBox),
   );
   return ui;
+}
+
+function applyPreset(id) {
+  const preset = presetsSpec.presets.find((x) => x.id === id) ?? presetsSpec.presets[0];
+  const { coauthors, excluded_wikis } = state.scoring.rules;
+  state.preset = preset.id;
+  state.scoring = mergeScoring(mergeScoring(defaultScoring, preset.scoring), { rules: { coauthors, excluded_wikis } });
+  persist();
+  recompute();
 }
 
 function updatePoints(criterion, input) {
@@ -439,8 +495,10 @@ function notices() {
     items.push(`${plural(unknownPhotos, 'photo téléversée n’est pas notée', 'photos téléversées ne sont pas notées')} : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.`);
   }
   if (stats.ignored > 0) {
-    items.push(`${plural(stats.ignored, 'page hors critères ignorée', 'pages hors critères ignorées')} (articles existants modifiés, pages de discussion ou utilisateur, éléments Wikidata modifiés).`);
+    items.push(`${plural(stats.ignored, 'page hors critères ignorée', 'pages hors critères ignorées')} (pages de discussion ou utilisateur, éléments Wikidata modifiés, autres espaces de noms).`);
   }
+  const capped = participants.filter((p) => p.capped.length).length;
+  if (capped > 0) items.push(`Plafonds appliqués : ${plural(capped, 'participant concerné', 'participants concernés')}.`);
   if (stats.deleted > 0) items.push(`${plural(stats.deleted, 'page supprimée écartée', 'pages supprimées écartées')}.`);
   if (state.scoring.rules.coauthors !== 'all' && participants.some((p) => p.evidence.some((e) => e.coauthors))) {
     items.push(`Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.`);
@@ -531,14 +589,19 @@ const STATUS_TEXT = {
   not_new: () => 'Non créé pendant la campagne',
   wiki_excluded: (e) => `${e.wiki} n’est pas retenue par le jury`,
   photo_usage_unknown: () => 'Usage inconnu : ajoutez l’export « uploads »',
+  photo_uploaded: (e) => (e.usage > 0 ? `Utilisée ${plural(e.usage, 'fois', 'fois')}` : 'Non utilisée dans un article'),
   photo_uploaded_used: (e) => `Utilisée ${plural(e.usage, 'fois', 'fois')}`,
+  article_edited: () => 'Article existant modifié',
+  reference_added: (e) => plural(e.quantity, 'référence ajoutée', 'références ajoutées'),
   photo_unused: () => 'Non utilisée dans un article',
   wikidata_item: () => 'Élément créé',
   photo_existing_used: (e) => (e.article ? `Ajoutée à « ${e.article} »` : 'Ajoutée à un article'),
 };
 
 const EVIDENCE_GROUPS = [
-  ['article', 'Articles'],
+  ['article', 'Articles créés'],
+  ['edit', 'Articles existants modifiés'],
+  ['reference', 'Références ajoutées dans des articles existants'],
   ['upload', 'Photos téléversées'],
   ['wikidata', 'Éléments Wikidata'],
   ['existing_photo', 'Photos existantes réutilisées'],
@@ -574,21 +637,28 @@ function openSheet(username, opener) {
     h('th', { scope: 'row' }, h('span', { class: `swatch c-${c}`, 'aria-hidden': 'true' }), criterionLabel(c, state.scoring)),
     h('td', { text: fmt.format(p.counts[c]) }),
     h('td', { text: `× ${state.scoring.points[c]}` }),
-    h('td', { class: 'num-strong', text: fmt.format(p.points[c]) })));
+    h('td', { class: 'num-strong' }, fmt.format(p.points[c]), p.capped.includes(c) ? h('span', { class: 'capped', text: ' plafonné' }) : null)));
 
+  const MAX_ITEMS = 150;
+  const entryPoints = (e) => (CRITERIA.includes(e.status) && e.share > 0 ? state.scoring.points[e.status] * e.share * (e.quantity ?? 1) : 0);
   const groups = EVIDENCE_GROUPS.map(([type, title]) => {
-    const items = p.evidence.filter((e) => e.type === type);
+    // Le bonus « photo utilisée » est fusionné avec la ligne de la photo.
+    const items = p.evidence.filter((e) => e.type === type && !e.bonus);
     if (!items.length) return null;
+    const bonusFor = (e) => p.evidence.find((b) => b.bonus && b.label === e.label);
     return h('section', { class: 'evidence' },
-      h('h3', { text: `${title} (${items.length})` }),
-      h('ul', {}, ...items.map((e) => {
-        const counted = CRITERIA.includes(e.status) && e.share > 0;
+      h('h3', { text: `${title} (${fmt.format(items.length)})` }),
+      h('ul', {}, ...items.slice(0, MAX_ITEMS).map((e) => {
+        const pts = entryPoints(e) + (e.type === 'upload' ? entryPoints(bonusFor(e) ?? {}) : 0);
+        const counted = pts > 0;
+        const swatch = counted ? `c-${e.type === 'upload' && e.usage > 0 && state.scoring.points.photo_uploaded === 0 ? 'photo_uploaded_used' : e.status}` : 'c-none';
         return h('li', { class: counted ? 'is-counted' : 'is-ignored' },
-          h('span', { class: `swatch ${counted ? `c-${e.status}` : 'c-none'}`, 'aria-hidden': 'true' }),
+          h('span', { class: `swatch ${swatch}`, 'aria-hidden': 'true' }),
           h('span', { class: 'ev-label' }, evidenceLink(e)),
           h('span', { class: 'ev-status', text: [STATUS_TEXT[e.status]?.(e), coauthorText(e, p.username)].filter(Boolean).join('. ') }),
-          h('span', { class: 'ev-points', text: counted ? `+${fmt.format(state.scoring.points[e.status] * e.share * (e.quantity ?? 1))}` : '0' }));
-      })));
+          h('span', { class: 'ev-points', text: counted ? `+${fmt.format(pts)}` : '0' }));
+      })),
+      items.length > MAX_ITEMS ? h('p', { class: 'is-muted', text: `… et ${fmt.format(items.length - MAX_ITEMS)} autres, détaillées dans l’export CSV de vos fichiers source.` }) : null);
   });
 
   const ctx = p.context;
@@ -637,7 +707,7 @@ function renderPrint() {
     h('p', { text: `Procès-verbal établi le ${date} avec WikiJury.` }),
     h('h2', { text: 'Barème appliqué' }),
     h('table', {}, h('tbody', {}, ...CRITERIA.map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
-    h('p', { text: `Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.${state.scoring.rules.excluded_wikis.length ? ` Wikis non retenus : ${state.scoring.rules.excluded_wikis.join(', ')}.` : ''}` }),
+    h('p', { text: `Modèle : ${presetsSpec.presets.find((x) => x.id === state.preset)?.label ?? 'personnalisé'}. Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.${state.scoring.rules.excluded_wikis.length ? ` Wikis non retenus : ${state.scoring.rules.excluded_wikis.join(', ')}.` : ''}${Object.keys(state.scoring.rules.caps ?? {}).length ? ` Plafonds par participant : ${Object.entries(state.scoring.rules.caps).map(([c, v]) => `${CRITERION_SHORT[c]} ${v} pts`).join(', ')}.` : ''}` }),
     h('h2', { text: 'Classement' }),
     h('table', {},
       h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...CRITERIA.map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),
@@ -681,9 +751,7 @@ function bind() {
   });
 
   $('[data-action="reset-scoring"]').addEventListener('click', () => {
-    state.scoring = mergeScoring(defaultScoring);
-    persist();
-    recompute();
+    applyPreset(state.preset);
   });
 
   $('[data-action="export"]').addEventListener('click', () => {

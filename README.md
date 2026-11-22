@@ -29,26 +29,37 @@ Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doi
 - un **export CSV** prêt pour Excel et un **procès-verbal imprimable** avec emplacements de signature du jury ;
 - la possibilité de classer des personnes **hors concours** (organisateurs, membres du jury).
 
-## Barème par défaut
+## Barèmes
 
-| Contribution | Points |
-|---|---|
-| Article créé de 4 000 caractères ou plus | 5 |
-| Article créé de 1 500 à 3 999 caractères | 3 |
-| Élément Wikidata créé | 3 |
-| Photo téléversée et utilisée dans un article | 2 |
-| Photo Commons existante ajoutée à un article | 1 |
+Deux modèles sont proposés ; le jury peut ensuite modifier chaque valeur. Un critère à 0 point est ignoré.
 
-Les points, les deux seuils de taille, la règle des co-auteurs et les Wikipédias retenues sont **réglables par le jury** dans l’interface. Le barème appliqué figure dans l’export CSV et dans le procès-verbal. Les valeurs par défaut sont définies dans [`shared/scoring.default.json`](shared/scoring.default.json).
+| Contribution | Standard WikiJury | Wiki for Sustainable Futures 2026 |
+|---|---|---|
+| Article créé de 4 000 caractères ou plus | 5 | 10 |
+| Article créé de 1 500 à 3 999 caractères | 3 | 10 (sans seuil minimal) |
+| Article existant modifié | 0 | 1 |
+| Référence ajoutée dans un article existant | 0 | 2 |
+| Élément Wikidata créé | 3 | 5 |
+| Photo téléversée (utilisée ou non) | 0 | 2 |
+| Bonus : photo téléversée et utilisée | 2 | 0 |
+| Photo Commons existante ajoutée à un article | 1 | 1 |
+
+Les modèles sont définis dans [`shared/presets.json`](shared/presets.json) : ajouter un barème de campagne revient à ajouter une entrée dans ce fichier. Le modèle, la règle des co-auteurs, les Wikipédias retenues et les plafonds figurent dans l’export CSV et dans le procès-verbal.
+
+### Plafonds par participant
+
+Un plafond facultatif limite les points qu’un participant peut obtenir sur un critère. C’est le levier le plus simple contre les critères « au volume » (articles modifiés, références) : sur l’export réel AfroCreatives 2025 avec le modèle WSF 2026, un participant arrive 2e avec 10 articles créés mais 342 références (684 points) ; avec un plafond de 200 points sur les références, il passe 3e. Le choix d’un plafond relève du règlement du concours.
 
 ### Règles de calcul
 
-- **Seules les créations pendant la campagne comptent** : nouveaux articles Wikipédia (espace principal), nouveaux éléments Wikidata (Q…), photos téléversées. Les modifications d’articles existants, les pages de discussion et les pages utilisateur sont ignorées, et leur nombre est affiché.
+- **Ce qui est compté** : nouveaux articles Wikipédia (espace principal), articles existants modifiés et références qui y ont été ajoutées, nouveaux éléments Wikidata (Q…), photos téléversées. Les pages de discussion, les pages utilisateur et les éléments Wikidata simplement modifiés sont ignorés, et leur nombre est affiché.
+- **Articles existants modifiés** : chaque participant listé pour la page obtient la pièce (il l’a bien modifiée). Les **références** ajoutées sont cumulées par page dans l’export, elles suivent donc la règle des co-auteurs. Les valeurs négatives (références retirées) comptent pour 0.
 - **Pages créées à plusieurs.** L’export « articles » du Dashboard liste tous les participants ayant modifié une page, sans indiquer qui l’a créée. L’ordre de cette liste suit le stockage interne du Dashboard, pas l’ordre de création. Le jury choisit la règle : **partager les points** (par défaut), **points entiers pour chacun** ou **points au premier listé**. Ce choix peut changer le podium : sur un export réel testé, le 1er avec la règle « points entiers » n’est que 3e avec le partage. La règle appliquée figure dans l’export et le procès-verbal.
 - **Un article compte une seule fois.** Les doublons (même wiki, même espace de noms, même titre) sont écartés et signalés. Les pages supprimées sont écartées.
 - **La taille est évaluée article par article**, pas en moyenne par participant, à partir de `characters_added` : les caractères ajoutés par les participants pendant la campagne, tous co-auteurs confondus. Un article sous le seuil minimal est listé dans la fiche avec la mention « Trop court » et rapporte 0 point.
 - Si le fichier d’articles contient une colonne « nouvel article », seuls les articles marqués comme créés sont notés. Sans cette colonne, toutes les lignes sont considérées comme des créations.
-- **Une photo téléversée rapporte des points uniquement si elle est utilisée** (nombre d’utilisations supérieur à 0). Cette information se trouve dans l’export « uploads » du Dashboard, pas dans l’export « articles » : sans lui, les photos sont listées comme « usage inconnu » et ne rapportent rien.
+- **Photos téléversées** : deux critères cumulables, « photo téléversée » (toute photo) et « bonus photo utilisée » (nombre d’utilisations supérieur à 0). L’usage se trouve dans l’export « uploads » du Dashboard, pas dans l’export « articles » : sans lui, les photos sont listées comme « usage inconnu » et ne rapportent rien.
+- **« Photo Commons existante ajoutée à un article »** n’apparaît dans aucun export du Dashboard : il faut un tableau tenu à la main (type « Photos existantes réutilisées »).
 - Les noms d’utilisateur sont rapprochés comme le fait MediaWiki : `Koffi_Mensah` et `koffi Mensah` désignent la même personne. Le reste du nom reste sensible à la casse.
 - Les préfixes `File:`, `Fichier:` et `Image:` sont ignorés lors de la comparaison des noms de fichiers.
 - Le fichier des participants (export « editors ») sert de liste d’inscrits et de contexte (modifications, octets, références). **Il n’attribue aucun point.**

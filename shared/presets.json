@@ -1,0 +1,30 @@
+{
+  "_comment": "Modèles de barème proposés dans l'interface. Chaque modèle complète scoring.default.json ; le jury peut ensuite modifier chaque valeur.",
+  "presets": [
+    {
+      "id": "standard",
+      "label": "Barème standard WikiJury",
+      "scoring": {}
+    },
+    {
+      "id": "wsf2026",
+      "label": "Wiki for Sustainable Futures 2026",
+      "source": "Barème communiqué par Wikimédiens du Bénin (novembre 2026)",
+      "scoring": {
+        "thresholds": {
+          "article_short_min_chars": 0
+        },
+        "points": {
+          "article_long": 10,
+          "article_short": 10,
+          "article_edited": 1,
+          "reference_added": 2,
+          "wikidata_item": 5,
+          "photo_uploaded": 2,
+          "photo_uploaded_used": 0,
+          "photo_existing_used": 1
+        }
+      }
+    }
+  ]
+}

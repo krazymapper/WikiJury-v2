@@ -58,6 +58,12 @@
           "aliases": [
             "deleted"
           ]
+        },
+        "references": {
+          "required": false,
+          "aliases": [
+            "references added"
+          ]
         }
       }
     },

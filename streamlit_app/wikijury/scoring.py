@@ -21,7 +21,10 @@ from .normalize import (
 CRITERIA = [
     "article_long",
     "article_short",
+    "article_edited",
+    "reference_added",
     "wikidata_item",
+    "photo_uploaded",
     "photo_uploaded_used",
     "photo_existing_used",
 ]
@@ -29,8 +32,11 @@ CRITERIA = [
 CRITERION_SHORT = {
     "article_long": "Article long",
     "article_short": "Article court",
+    "article_edited": "Article modifié",
+    "reference_added": "Référence",
     "wikidata_item": "Wikidata",
-    "photo_uploaded_used": "Photo téléversée",
+    "photo_uploaded": "Photo téléversée",
+    "photo_uploaded_used": "Photo utilisée",
     "photo_existing_used": "Photo réutilisée",
 }
 
@@ -72,9 +78,16 @@ def criterion_label(criterion: str, scoring: dict[str, Any]) -> str:
     short_min = scoring["thresholds"]["article_short_min_chars"]
     return {
         "article_long": f"Article créé de {_fmt(long_min)} caractères ou plus",
-        "article_short": f"Article créé de {_fmt(short_min)} à {_fmt(long_min - 1)} caractères",
+        "article_short": (
+            f"Article créé de moins de {_fmt(long_min)} caractères"
+            if short_min <= 1
+            else f"Article créé de {_fmt(short_min)} à {_fmt(long_min - 1)} caractères"
+        ),
+        "article_edited": "Article existant modifié",
+        "reference_added": "Référence ajoutée dans un article existant",
         "wikidata_item": "Élément Wikidata créé",
-        "photo_uploaded_used": "Photo téléversée et utilisée",
+        "photo_uploaded": "Photo téléversée (utilisée ou non)",
+        "photo_uploaded_used": "Bonus : photo téléversée et utilisée",
         "photo_existing_used": "Photo Commons existante utilisée",
     }.get(criterion, criterion)
 
@@ -95,6 +108,7 @@ class Participant:
     context: dict[str, int] = field(default_factory=dict)
     points: dict[str, float] = field(default_factory=dict)
     total: float = 0
+    capped: list[str] = field(default_factory=list)
     excluded: bool = False
     rank: int | None = None
 
@@ -188,6 +202,24 @@ def compute_ranking(
                 is_file = wiki == "commons.wikimedia.org" and ns == 6
                 # Seules les créations pendant la campagne comptent ; les fichiers
                 # sont notés à partir de l'export « uploads » quand il est fourni.
+                if is_article and not is_new:
+                    # Article existant : chaque participant l'a modifié (1 pièce chacun) ;
+                    # les références ajoutées, cumulées sur la page, suivent la règle des co-auteurs.
+                    if not once(f"{wiki}|{ns}|{title}", ds.source, line, f"« {title} » ({wiki})"):
+                        continue
+                    if wiki in excluded_wikis:
+                        for u in users:
+                            participant(u).evidence.append({"type": "edit", "status": "wiki_excluded", "label": title, "wiki": wiki, "source": ds.source, "share": 1})
+                        continue
+                    for u in users:
+                        participant(u).evidence.append({
+                            "type": "edit", "status": "article_edited", "label": title, "wiki": wiki, "source": ds.source,
+                            "share": 1, "coauthors": users if len(users) > 1 else None,
+                        })
+                    refs = max(0, parse_count(get(row, "references"))) if mapping.get("references") else 0
+                    if refs > 0:
+                        credit(users, {"type": "reference", "status": "reference_added", "label": title, "wiki": wiki, "quantity": refs, "source": ds.source})
+                    continue
                 if not is_new or not (is_article or is_item or is_file) or (is_file and has_uploads):
                     stats["ignored"] += 1
                     continue
@@ -232,8 +264,10 @@ def compute_ranking(
                         warn("invalid_value", ds.source, line, f"Valeur « nouvel article » illisible pour « {title} » : considéré comme non créé.")
                     is_new = parsed is True
                 chars = parse_count(get(row, "characters"))
-                status = _article_status(chars, scoring["thresholds"]) if is_new else "not_new"
-                p.evidence.append({"type": "article", "status": status, "label": title, "chars": chars, "source": ds.source, "share": 1})
+                if is_new:
+                    p.evidence.append({"type": "article", "status": _article_status(chars, scoring["thresholds"]), "label": title, "chars": chars, "source": ds.source, "share": 1})
+                else:
+                    p.evidence.append({"type": "edit", "status": "article_edited", "label": title, "source": ds.source, "share": 1})
                 continue
 
             if ds.kind == "uploads":
@@ -247,8 +281,9 @@ def compute_ranking(
                 if not once(f"upload|{file}", ds.source, line, f"« {file} »"):
                     continue
                 usage = parse_count(get(row, "usage_count"))
-                status = "photo_uploaded_used" if usage > 0 else "photo_unused"
-                p.evidence.append({"type": "upload", "status": status, "label": file, "usage": usage, "source": ds.source, "share": 1})
+                p.evidence.append({"type": "upload", "status": "photo_uploaded", "label": file, "usage": usage, "source": ds.source, "share": 1})
+                if usage > 0:
+                    p.evidence.append({"type": "upload", "status": "photo_uploaded_used", "label": file, "usage": usage, "source": ds.source, "share": 1, "bonus": True})
                 continue
 
             if ds.kind == "wikidata":
@@ -286,7 +321,15 @@ def compute_ranking(
             counts[e["status"]] += quantity
             raw[e["status"]] += float(scoring["points"].get(e["status"], 0) or 0) * e["share"] * quantity
         p.counts = counts
-        p.points = {c: round2(raw[c]) for c in CRITERIA}
+        caps = rules.get("caps", {}) or {}
+        p.points, p.capped = {}, []
+        for c in CRITERIA:
+            value = round2(raw[c])
+            cap = float(caps.get(c) or 0)
+            if cap > 0 and value > cap:
+                p.capped.append(c)
+                value = int(cap) if cap == int(cap) else cap
+            p.points[c] = value
         p.total = round2(sum(p.points[c] for c in CRITERIA))
         p.excluded = p.username in excluded_set
 

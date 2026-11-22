@@ -8,6 +8,7 @@ barème et correspondance des colonnes sont lus dans le dossier `shared/`.
 from __future__ import annotations
 
 import html
+import json
 from datetime import date
 from pathlib import Path
 
@@ -46,8 +47,11 @@ st.set_page_config(
 COLORS = {
     "article_long": "#006699",
     "article_short": "#7DB9D6",
+    "article_edited": "#A3ADBB",
+    "reference_added": "#B5537A",
     "wikidata_item": "#339966",
-    "photo_uploaded_used": "#D9A23A",
+    "photo_uploaded": "#ECC977",
+    "photo_uploaded_used": "#C98A1B",
     "photo_existing_used": "#8E6FB8",
 }
 FIELD_LABELS = {
@@ -74,8 +78,10 @@ STATUS_TEXT = {
     "article_short": "Article court",
     "too_short": "Trop court",
     "not_new": "Non créé pendant la campagne",
-    "photo_uploaded_used": "Utilisée",
-    "photo_unused": "Non utilisée dans un article",
+    "photo_uploaded": "Photo téléversée",
+    "photo_uploaded_used": "Bonus : photo utilisée",
+    "article_edited": "Article existant modifié",
+    "reference_added": "Références ajoutées",
     "wikidata_item": "Élément créé",
     "photo_existing_used": "Ajoutée à un article",
     "wiki_excluded": "Wiki non retenu par le jury",
@@ -83,6 +89,7 @@ STATUS_TEXT = {
 }
 
 SPEC = load_columns_spec()
+PRESETS = {p["id"]: p for p in json.loads((ROOT / "shared" / "presets.json").read_text(encoding="utf-8"))["presets"]}
 DEFAULT_SCORING = load_default_scoring()
 SCORED_KINDS = {"dashboard_articles", "articles", "uploads", "wikidata", "existing_photos"}
 
@@ -114,15 +121,21 @@ def init_state() -> None:
         st.session_state.setdefault(f"th_{k}", int(v))
     st.session_state.setdefault("use_sample", False)
     st.session_state.setdefault("rule_coauthors", DEFAULT_SCORING["rules"]["coauthors"])
+    st.session_state.setdefault("preset", "standard")
+    for c in CRITERIA:
+        st.session_state.setdefault(f"cap_{c}", 0)
     st.session_state.setdefault("campaign", "")
 
 
 def reset_scoring() -> None:
-    for c, v in DEFAULT_SCORING["points"].items():
+    """Rétablit les valeurs du modèle de barème choisi."""
+    preset = merge_scoring(DEFAULT_SCORING, PRESETS[st.session_state.preset]["scoring"])
+    for c, v in preset["points"].items():
         st.session_state[f"pts_{c}"] = v
-    for k, v in DEFAULT_SCORING["thresholds"].items():
+    for k, v in preset["thresholds"].items():
         st.session_state[f"th_{k}"] = v
-    st.session_state["rule_coauthors"] = DEFAULT_SCORING["rules"]["coauthors"]
+    for c in CRITERIA:
+        st.session_state[f"cap_{c}"] = int(preset["rules"].get("caps", {}).get(c, 0))
 
 
 def fmt(n: float) -> str:
@@ -165,6 +178,7 @@ with st.sidebar:
     )
 
     st.markdown("#### Barème")
+    st.selectbox("Modèle de barème", list(PRESETS), format_func=lambda k: PRESETS[k]["label"], key="preset", on_change=reset_scoring)
     scoring_points = {}
     for c in CRITERIA:
         scoring_points[c] = st.number_input(
@@ -179,10 +193,10 @@ with st.sidebar:
         )
     col_a, col_b = st.columns(2)
     long_min = col_a.number_input(
-        "Article long (car.)", min_value=1, step=100, key="th_article_long_min_chars",
+        "Article long (car.)", min_value=0, step=100, key="th_article_long_min_chars",
     )
     short_min = col_b.number_input(
-        "Article court (car.)", min_value=1, step=100, key="th_article_short_min_chars",
+        "Article court (car.)", min_value=0, step=100, key="th_article_short_min_chars",
     )
     st.selectbox(
         "Pages créées à plusieurs",
@@ -191,12 +205,15 @@ with st.sidebar:
         key="rule_coauthors",
         help="L’export du Dashboard liste tous les participants ayant modifié une page, sans dire qui l’a créée.",
     )
-    st.button("Rétablir le barème par défaut", on_click=reset_scoring, width="stretch")
+    with st.expander("Plafonds par participant"):
+        st.caption("Limite les points qu’un participant peut obtenir sur un critère (0 = aucun plafond).")
+        caps = {c: st.number_input(CRITERION_SHORT[c], min_value=0, step=10, key=f"cap_{c}") for c in CRITERIA}
+    st.button("Rétablir les valeurs du modèle", on_click=reset_scoring, width="stretch")
 
 scoring = merge_scoring(DEFAULT_SCORING, {
     "points": scoring_points,
     "thresholds": {"article_long_min_chars": int(long_min), "article_short_min_chars": int(short_min)},
-    "rules": {"coauthors": st.session_state.rule_coauthors},
+    "rules": {"coauthors": st.session_state.rule_coauthors, "caps": {c: v for c, v in caps.items() if v > 0}},
 })
 scoring_valid = short_min < long_min
 
@@ -310,11 +327,14 @@ unknown_photos = sum(1 for p in result.participants for e in p.evidence if e["st
 if unknown_photos:
     notices.append(f"{unknown_photos} photo(s) téléversée(s) non notée(s) : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.")
 if result.stats["ignored"]:
-    notices.append(f"{fmt(result.stats['ignored'])} page(s) hors critères ignorée(s) (articles existants modifiés, pages de discussion ou utilisateur, éléments Wikidata modifiés).")
+    notices.append(f"{fmt(result.stats['ignored'])} page(s) hors critères ignorée(s) (pages de discussion ou utilisateur, éléments Wikidata modifiés, autres espaces de noms).")
 if result.stats["deleted"]:
     notices.append(f"{result.stats['deleted']} page(s) supprimée(s) écartée(s).")
 if scoring["rules"]["coauthors"] != "all" and any(e.get("coauthors") for p in result.participants for e in p.evidence):
     notices.append(f"Pages créées à plusieurs : {COAUTHOR_RULES[scoring['rules']['coauthors']].lower()}.")
+capped = sum(1 for p in result.participants if p.capped)
+if capped:
+    notices.append(f"Plafonds appliqués : {capped} participant(s) concerné(s).")
 if notices:
     st.info("\n".join(f"- {n}" for n in notices))
 
@@ -377,7 +397,7 @@ if p.context:
     )
 st.dataframe(
     pd.DataFrame([
-        {"Critère": criterion_label(c, scoring), "Nombre": p.counts[c], "Barème": scoring["points"][c], "Points": float(p.points[c])}
+        {"Critère": criterion_label(c, scoring) + (" (plafonné)" if c in p.capped else ""), "Nombre": p.counts[c], "Barème": scoring["points"][c], "Points": float(p.points[c])}
         for c in CRITERIA
     ]),
     hide_index=True, width="stretch",
@@ -385,7 +405,11 @@ st.dataframe(
 if p.evidence:
     rows = []
     for e in p.evidence:
+        if e.get("bonus"):
+            continue  # fusionné avec la ligne de la photo
         detail = STATUS_TEXT.get(e["status"], "")
+        if e["status"] == "reference_added":
+            detail = f"{e['quantity']} référence(s) ajoutée(s)"
         if e["status"] == "too_short":
             detail += f" ({e['chars']} car., minimum {scoring['thresholds']['article_short_min_chars']})"
         elif e.get("usage"):
@@ -400,12 +424,13 @@ if p.evidence:
                 detail += f". Avec {others} : points partagés (1/{len(e['coauthors'])})"
             else:
                 detail += f". Avec {others}"
-        counted = e["status"] in CRITERIA and e["share"] > 0
-        rows.append({
-            "Pièce": e["label"], "Statut": detail,
-            "Points": round(scoring["points"][e["status"]] * e["share"] * e.get("quantity", 1), 2) if counted else 0,
-            "Fichier": e["source"],
-        })
+        def pts(x):
+            ok = x["status"] in CRITERIA and x["share"] > 0
+            return scoring["points"][x["status"]] * x["share"] * x.get("quantity", 1) if ok else 0
+        value = pts(e)
+        if e["type"] == "upload":
+            value += sum(pts(b) for b in p.evidence if b.get("bonus") and b["label"] == e["label"])
+        rows.append({"Pièce": e["label"], "Statut": detail, "Points": round(value, 2), "Fichier": e["source"]})
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 # ------------------------------------------------------------------------- pied de page

@@ -11,55 +11,201 @@
         "wikidata.csv": "wikidata",
         "existing_photos.csv": "existing_photos"
       },
-      "warnings": { "duplicate": 4, "missing_value": 1 },
-      "stats": { "deleted": 0, "ignored": 0 },
+      "warnings": {
+        "duplicate": 4,
+        "missing_value": 1
+      },
+      "stats": {
+        "deleted": 0,
+        "ignored": 0
+      },
       "scenarios": [
         {
           "name": "barème par défaut",
           "scoring": {},
           "excluded": [],
           "ranking": [
-            { "username": "Aïcha Dossou", "rank": 1, "total": 13, "counts": { "article_long": 1, "article_short": 1, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 0 } },
-            { "username": "Koffi Mensah", "rank": 2, "total": 11, "counts": { "article_long": 1, "article_short": 0, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 1 } },
-            { "username": "Rachidatou", "rank": 2, "total": 11, "counts": { "article_long": 0, "article_short": 0, "wikidata_item": 2, "photo_uploaded_used": 1, "photo_existing_used": 3 } },
-            { "username": "Jury Membre", "rank": 4, "total": 5, "counts": { "article_long": 1, "article_short": 0, "wikidata_item": 0, "photo_uploaded_used": 0, "photo_existing_used": 0 } },
-            { "username": "Sans Contribution", "rank": 5, "total": 0, "counts": { "article_long": 0, "article_short": 0, "wikidata_item": 0, "photo_uploaded_used": 0, "photo_existing_used": 0 } }
+            {
+              "username": "Aïcha Dossou",
+              "rank": 1,
+              "total": 13,
+              "counts": {
+                "article_long": 1,
+                "article_short": 1,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 1,
+                "photo_uploaded": 1,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Koffi Mensah",
+              "rank": 2,
+              "total": 11,
+              "counts": {
+                "article_long": 1,
+                "article_short": 0,
+                "article_edited": 1,
+                "reference_added": 0,
+                "wikidata_item": 1,
+                "photo_uploaded": 1,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 1
+              }
+            },
+            {
+              "username": "Rachidatou",
+              "rank": 2,
+              "total": 11,
+              "counts": {
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 2,
+                "photo_uploaded": 2,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 3
+              }
+            },
+            {
+              "username": "Jury Membre",
+              "rank": 4,
+              "total": 5,
+              "counts": {
+                "article_long": 1,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 0,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Sans Contribution",
+              "rank": 5,
+              "total": 0,
+              "counts": {
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 0,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            }
           ]
         },
         {
           "name": "article long à 10 points",
-          "scoring": { "points": { "article_long": 10 } },
+          "scoring": {
+            "points": {
+              "article_long": 10
+            }
+          },
           "excluded": [],
           "ranking": [
-            { "username": "Aïcha Dossou", "rank": 1, "total": 18 },
-            { "username": "Koffi Mensah", "rank": 2, "total": 16 },
-            { "username": "Rachidatou", "rank": 3, "total": 11 },
-            { "username": "Jury Membre", "rank": 4, "total": 10 },
-            { "username": "Sans Contribution", "rank": 5, "total": 0 }
+            {
+              "username": "Aïcha Dossou",
+              "rank": 1,
+              "total": 18
+            },
+            {
+              "username": "Koffi Mensah",
+              "rank": 2,
+              "total": 16
+            },
+            {
+              "username": "Rachidatou",
+              "rank": 3,
+              "total": 11
+            },
+            {
+              "username": "Jury Membre",
+              "rank": 4,
+              "total": 10
+            },
+            {
+              "username": "Sans Contribution",
+              "rank": 5,
+              "total": 0
+            }
           ]
         },
         {
           "name": "seuil article court relevé à 2 200 caractères",
-          "scoring": { "thresholds": { "article_short_min_chars": 2200 } },
+          "scoring": {
+            "thresholds": {
+              "article_short_min_chars": 2200
+            }
+          },
           "excluded": [],
           "ranking": [
-            { "username": "Koffi Mensah", "rank": 1, "total": 11 },
-            { "username": "Rachidatou", "rank": 1, "total": 11 },
-            { "username": "Aïcha Dossou", "rank": 3, "total": 10 },
-            { "username": "Jury Membre", "rank": 4, "total": 5 },
-            { "username": "Sans Contribution", "rank": 5, "total": 0 }
+            {
+              "username": "Koffi Mensah",
+              "rank": 1,
+              "total": 11
+            },
+            {
+              "username": "Rachidatou",
+              "rank": 1,
+              "total": 11
+            },
+            {
+              "username": "Aïcha Dossou",
+              "rank": 3,
+              "total": 10
+            },
+            {
+              "username": "Jury Membre",
+              "rank": 4,
+              "total": 5
+            },
+            {
+              "username": "Sans Contribution",
+              "rank": 5,
+              "total": 0
+            }
           ]
         },
         {
           "name": "membre du jury hors concours",
           "scoring": {},
-          "excluded": ["jury_Membre"],
+          "excluded": [
+            "jury_Membre"
+          ],
           "ranking": [
-            { "username": "Aïcha Dossou", "rank": 1, "total": 13 },
-            { "username": "Koffi Mensah", "rank": 2, "total": 11 },
-            { "username": "Rachidatou", "rank": 2, "total": 11 },
-            { "username": "Sans Contribution", "rank": 4, "total": 0 },
-            { "username": "Jury Membre", "rank": null, "total": 5 }
+            {
+              "username": "Aïcha Dossou",
+              "rank": 1,
+              "total": 13
+            },
+            {
+              "username": "Koffi Mensah",
+              "rank": 2,
+              "total": 11
+            },
+            {
+              "username": "Rachidatou",
+              "rank": 2,
+              "total": 11
+            },
+            {
+              "username": "Sans Contribution",
+              "rank": 4,
+              "total": 0
+            },
+            {
+              "username": "Jury Membre",
+              "rank": null,
+              "total": 5
+            }
           ]
         }
       ]
@@ -73,51 +219,236 @@
         "course_uploads.csv": "uploads",
         "course_wikidata.csv": "dashboard_summary"
       },
-      "warnings": { "duplicate": 1 },
-      "stats": { "deleted": 2, "ignored": 5 },
+      "warnings": {
+        "duplicate": 1
+      },
+      "stats": {
+        "deleted": 2,
+        "ignored": 4
+      },
       "scenarios": [
         {
           "name": "co-auteurs : partage égal (par défaut)",
           "scoring": {},
           "excluded": [],
           "ranking": [
-            { "username": "Abla Exemple", "rank": 1, "total": 10.5, "counts": { "article_long": 2, "article_short": 0, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 0 } },
-            { "username": "Codjo Exemple", "rank": 2, "total": 7, "counts": { "article_long": 0, "article_short": 1, "wikidata_item": 2, "photo_uploaded_used": 0, "photo_existing_used": 0 } },
-            { "username": "Bio Exemple", "rank": 3, "total": 5.5, "counts": { "article_long": 1, "article_short": 0, "wikidata_item": 1, "photo_uploaded_used": 1, "photo_existing_used": 0 } },
-            { "username": "Dossi Exemple", "rank": 4, "total": 0, "counts": { "article_long": 0, "article_short": 0, "wikidata_item": 0, "photo_uploaded_used": 0, "photo_existing_used": 0 } }
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 10.5,
+              "counts": {
+                "article_long": 2,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 1,
+                "photo_uploaded": 1,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 2,
+              "total": 7,
+              "counts": {
+                "article_long": 0,
+                "article_short": 1,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 2,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 5.5,
+              "counts": {
+                "article_long": 1,
+                "article_short": 0,
+                "article_edited": 1,
+                "reference_added": 1,
+                "wikidata_item": 1,
+                "photo_uploaded": 2,
+                "photo_uploaded_used": 1,
+                "photo_existing_used": 0
+              }
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0,
+              "counts": {
+                "article_long": 0,
+                "article_short": 0,
+                "article_edited": 0,
+                "reference_added": 0,
+                "wikidata_item": 0,
+                "photo_uploaded": 0,
+                "photo_uploaded_used": 0,
+                "photo_existing_used": 0
+              }
+            }
           ]
         },
         {
           "name": "co-auteurs : points entiers pour chacun",
-          "scoring": { "rules": { "coauthors": "all" } },
+          "scoring": {
+            "rules": {
+              "coauthors": "all"
+            }
+          },
           "excluded": [],
           "ranking": [
-            { "username": "Abla Exemple", "rank": 1, "total": 15 },
-            { "username": "Bio Exemple", "rank": 2, "total": 10 },
-            { "username": "Codjo Exemple", "rank": 3, "total": 9 },
-            { "username": "Dossi Exemple", "rank": 4, "total": 0 }
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 15
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 10
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 3,
+              "total": 9
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
           ]
         },
         {
           "name": "co-auteurs : premier participant listé",
-          "scoring": { "rules": { "coauthors": "first" } },
+          "scoring": {
+            "rules": {
+              "coauthors": "first"
+            }
+          },
           "excluded": [],
           "ranking": [
-            { "username": "Codjo Exemple", "rank": 1, "total": 9 },
-            { "username": "Abla Exemple", "rank": 2, "total": 7 },
-            { "username": "Bio Exemple", "rank": 2, "total": 7 },
-            { "username": "Dossi Exemple", "rank": 4, "total": 0 }
+            {
+              "username": "Codjo Exemple",
+              "rank": 1,
+              "total": 9
+            },
+            {
+              "username": "Abla Exemple",
+              "rank": 2,
+              "total": 7
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 7
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
           ]
         },
         {
           "name": "Wikipédia en fon exclue",
-          "scoring": { "rules": { "excluded_wikis": ["fon.wikipedia.org"] } },
+          "scoring": {
+            "rules": {
+              "excluded_wikis": [
+                "fon.wikipedia.org"
+              ]
+            }
+          },
           "excluded": [],
           "ranking": [
-            { "username": "Abla Exemple", "rank": 1, "total": 10.5 },
-            { "username": "Bio Exemple", "rank": 2, "total": 5.5 },
-            { "username": "Codjo Exemple", "rank": 3, "total": 4 },
-            { "username": "Dossi Exemple", "rank": 4, "total": 0 }
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 10.5
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 5.5
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 3,
+              "total": 4
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        },
+        {
+          "name": "modèle Wiki for Sustainable Futures 2026",
+          "preset": "wsf2026",
+          "scoring": {},
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Codjo Exemple",
+              "rank": 1,
+              "total": 26.67
+            },
+            {
+              "username": "Abla Exemple",
+              "rank": 2,
+              "total": 18.67
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 13.67
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
+          ]
+        },
+        {
+          "name": "modèle WSF 2026 avec plafond de 15 points sur les articles courts",
+          "preset": "wsf2026",
+          "scoring": {
+            "rules": {
+              "caps": {
+                "article_short": 15
+              }
+            }
+          },
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Codjo Exemple",
+              "rank": 1,
+              "total": 21.67
+            },
+            {
+              "username": "Abla Exemple",
+              "rank": 2,
+              "total": 18.67
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 3,
+              "total": 13.67
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 4,
+              "total": 0
+            }
           ]
         }
       ]

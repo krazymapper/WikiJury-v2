@@ -13,7 +13,10 @@ import {
 export const CRITERIA = [
   'article_long',
   'article_short',
+  'article_edited',
+  'reference_added',
   'wikidata_item',
+  'photo_uploaded',
   'photo_uploaded_used',
   'photo_existing_used',
 ];
@@ -41,11 +44,19 @@ export function criterionLabel(id, scoring) {
     case 'article_long':
       return `Article créé de ${formatInt(long)} caractères ou plus`;
     case 'article_short':
-      return `Article créé de ${formatInt(short)} à ${formatInt(long - 1)} caractères`;
+      return short <= 1
+        ? `Article créé de moins de ${formatInt(long)} caractères`
+        : `Article créé de ${formatInt(short)} à ${formatInt(long - 1)} caractères`;
+    case 'article_edited':
+      return 'Article existant modifié';
+    case 'reference_added':
+      return 'Référence ajoutée dans un article existant';
     case 'wikidata_item':
       return 'Élément Wikidata créé';
+    case 'photo_uploaded':
+      return 'Photo téléversée (utilisée ou non)';
     case 'photo_uploaded_used':
-      return 'Photo téléversée et utilisée';
+      return 'Bonus : photo téléversée et utilisée';
     case 'photo_existing_used':
       return 'Photo Commons existante utilisée';
     default:
@@ -57,8 +68,11 @@ export function criterionLabel(id, scoring) {
 export const CRITERION_SHORT = {
   article_long: 'Article long',
   article_short: 'Article court',
+  article_edited: 'Article modifié',
+  reference_added: 'Référence',
   wikidata_item: 'Wikidata',
-  photo_uploaded_used: 'Photo téléversée',
+  photo_uploaded: 'Photo téléversée',
+  photo_uploaded_used: 'Photo utilisée',
   photo_existing_used: 'Photo réutilisée',
 };
 
@@ -148,6 +162,21 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
         const isFile = wiki === 'commons.wikimedia.org' && ns === 6;
         // Seules les créations pendant la campagne comptent ; les fichiers
         // sont notés à partir de l'export « uploads » quand il est fourni.
+        if (isArticle && !isNew) {
+          // Article existant : chaque participant l'a modifié (1 pièce chacun) ;
+          // les références ajoutées, cumulées sur la page, suivent la règle des co-auteurs.
+          if (!once(`${wiki}|${ns}|${title}`, source, line, `« ${title} » (${wiki})`)) return;
+          if (excludedWikis.has(wiki)) {
+            for (const u of users) participant(u).evidence.push({ type: 'edit', status: 'wiki_excluded', label: title, wiki, source, share: 1 });
+            return;
+          }
+          for (const u of users) {
+            participant(u).evidence.push({ type: 'edit', status: 'article_edited', label: title, wiki, source, share: 1, coauthors: users.length > 1 ? users : undefined });
+          }
+          const refs = mapping.references ? Math.max(0, parseCount(get(row, 'references'))) : 0;
+          if (refs > 0) credit(users, { type: 'reference', status: 'reference_added', label: title, wiki, quantity: refs, source });
+          return;
+        }
         if (!isNew || !(isArticle || isItem || isFile) || (isFile && hasUploads)) {
           stats.ignored += 1;
           return;
@@ -196,8 +225,8 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           isNew = parsed === true;
         }
         const chars = parseCount(get(row, 'characters'));
-        const status = isNew ? articleStatus(chars, scoring.thresholds) : 'not_new';
-        p.evidence.push({ type: 'article', status, label: title, chars, source, share: 1 });
+        if (isNew) p.evidence.push({ type: 'article', status: articleStatus(chars, scoring.thresholds), label: title, chars, source, share: 1 });
+        else p.evidence.push({ type: 'edit', status: 'article_edited', label: title, source, share: 1 });
         return;
       }
 
@@ -213,8 +242,8 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
         }
         if (!once(`upload|${file}`, source, line, `« ${file} »`)) return;
         const usage = parseCount(get(row, 'usage_count'));
-        const status = usage > 0 ? 'photo_uploaded_used' : 'photo_unused';
-        p.evidence.push({ type: 'upload', status, label: file, usage, source, share: 1 });
+        p.evidence.push({ type: 'upload', status: 'photo_uploaded', label: file, usage, source, share: 1 });
+        if (usage > 0) p.evidence.push({ type: 'upload', status: 'photo_uploaded_used', label: file, usage, source, share: 1, bonus: true });
         return;
       }
 
@@ -256,9 +285,19 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
       counts[e.status] += quantity;
       raw[e.status] += (Number(scoring.points[e.status]) || 0) * e.share * quantity;
     }
-    const points = Object.fromEntries(CRITERIA.map((c) => [c, round2(raw[c])]));
+    const caps = scoring.rules.caps ?? {};
+    const capped = [];
+    const points = Object.fromEntries(CRITERIA.map((c) => {
+      const value = round2(raw[c]);
+      const cap = Number(caps[c]);
+      if (cap > 0 && value > cap) {
+        capped.push(c);
+        return [c, cap];
+      }
+      return [c, value];
+    }));
     const total = round2(CRITERIA.reduce((sum, c) => sum + points[c], 0));
-    return { ...p, counts, points, total, excluded: excludedSet.has(p.username), rank: null };
+    return { ...p, counts, points, capped, total, excluded: excludedSet.has(p.username), rank: null };
   });
 
   const byScore = (a, b) => b.total - a.total || compareNames(a.username, b.username);

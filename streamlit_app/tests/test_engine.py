@@ -24,6 +24,7 @@ from wikijury.normalize import normalize_title, normalize_username, parse_bool, 
 FIXTURES = Path(__file__).resolve().parents[2] / "shared" / "fixtures"
 EXPECTED = json.loads((FIXTURES / "expected.json").read_text(encoding="utf-8"))
 SPEC = load_columns_spec()
+PRESETS = json.loads((FIXTURES.parent / "presets.json").read_text(encoding="utf-8"))["presets"]
 DEFAULT = load_default_scoring()
 
 
@@ -87,7 +88,8 @@ def test_normalization():
     ids=lambda x: x["name"],
 )
 def test_ranking_parity(suite, scenario):
-    scoring = merge_scoring(DEFAULT, scenario["scoring"])
+    preset = next(p for p in PRESETS if p["id"] == scenario.get("preset", "standard"))
+    scoring = merge_scoring(merge_scoring(DEFAULT, preset["scoring"]), scenario["scoring"])
     result = compute_ranking(load_datasets(suite), scoring, scenario["excluded"])
     with_counts = "counts" in scenario["ranking"][0]
     got = [
@@ -147,3 +149,14 @@ def test_csv_with_doubled_quotes():
 def test_semicolon_csv():
     headers, rows = read_upload("x.csv", "Utilisateur;Titre;Caractères ajoutés\nAbla;Abomey;4500\n".encode())
     assert headers == ["Utilisateur", "Titre", "Caractères ajoutés"] and rows[0]["Titre"] == "Abomey"
+
+
+def test_presets_use_known_criteria():
+    for preset in PRESETS:
+        assert set(preset["scoring"].get("points", {})) <= set(DEFAULT["points"])
+
+
+def test_caps_are_reported():
+    scoring = merge_scoring(merge_scoring(DEFAULT, PRESETS[1]["scoring"]), {"rules": {"caps": {"article_short": 15}}})
+    top = compute_ranking(load_datasets(SUITES[1]), scoring).participants[0]
+    assert top.username == "Codjo Exemple" and top.capped == ["article_short"]

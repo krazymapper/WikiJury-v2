@@ -66,6 +66,7 @@ export function rankingToCsv(participants, scoring) {
     `Article court ≥ ${scoring.thresholds.article_short_min_chars} car.`,
     `Co-auteurs : ${COAUTHOR_RULES[scoring.rules.coauthors]}`,
     ...(scoring.rules.excluded_wikis.length ? [`Wikis non retenus : ${scoring.rules.excluded_wikis.join(', ')}`] : []),
+    ...Object.entries(scoring.rules.caps ?? {}).map(([c, v]) => `Plafond ${CRITERION_SHORT[c]} = ${v} pts`),
   ];
   return '﻿' + [header, ...lines, [], scoringLine].map((r) => r.map(cell).join(';')).join('\r\n');
 }

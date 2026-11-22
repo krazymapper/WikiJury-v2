@@ -42,3 +42,13 @@ def test_invalid_thresholds_are_reported():
     at.number_input(key="th_article_short_min_chars").set_value(5000).run()
     assert not at.exception
     assert any("seuil" in e.value for e in at.error)
+
+
+def test_wsf_preset():
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.button[0].click().run()
+    at.selectbox(key="preset").set_value("wsf2026").run()
+    assert not at.exception
+    assert at.number_input(key="pts_article_short").value == 10
+    # 26,67 + 18,67 + 13,67 + 0 = 59,01 (arrondis au centième par participant)
+    assert any("59,01 points" in c.value for c in at.caption)
