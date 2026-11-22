@@ -39,6 +39,7 @@ Chaque campagne a son règlement : le jury choisit un **type de campagne**, puis
 | **Africa Wiki Challenge (grille 2025)** | 8 paliers selon les octets ajoutés : création de 12 à 1 point, modification de 10 à 1 point | grille 2025 d’OFWA ; deux paliers de modification non vérifiés (voir ci-dessous) |
 | Édition : décompte par article | 1 point par article créé, traduit, amélioré, et par photo utilisée | valeurs neutres, à adapter |
 | Mois de la contribution francophone | décompte par article | aucun barème commun publié |
+| Wikipedia African Month (mai) | 1 point par article créé, traduit ou développé d’au moins 3 000 octets | règles de la campagne ; les critères qualitatifs (sources, pas de traduction automatique brute, pas de liste) restent à contrôler par le jury |
 | #1Lib1Ref | 1 point par référence ajoutée | aucun barème officiel ; le mot-dièse n’est pas visible dans les exports |
 | AfroCreatives WikiProject | articles créés et améliorés, 1 point chacun | prix décernés par le jury sur la qualité : présélection seulement |
 | Concours photo Wiki Loves (Africa, Monuments, Folklore…) | 1 point par photo téléversée | lauréats choisis par un jury sur la qualité : préparation du jury seulement |

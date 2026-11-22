@@ -173,6 +173,45 @@
       }
     },
     {
+      "id": "wam",
+      "label": "Wikipedia African Month (mai)",
+      "description": "Un point par article sur l'Afrique créé ou développé d'au moins 3 000 octets avec des sources fiables. Les participants qui créent le plus d'articles sont nommés ambassadeurs ; 4 points donnent droit à la distinction (barnstar) WAM de l'année.",
+      "sources": [
+        {
+          "title": "Wikipedia African Month (Meta-Wiki)",
+          "url": "https://meta.wikimedia.org/wiki/Wikipedia_African_Month/de"
+        },
+        {
+          "title": "Wikipedia:Afrikamonat 2025 (règles de l'édition germanophone)",
+          "url": "https://de.wikipedia.org/wiki/Wikipedia:Afrikamonat_2025"
+        }
+      ],
+      "checked_on": "2026-11-22",
+      "unverified": [
+        "Critères qualitatifs à contrôler par le jury, invisibles dans les exports : sources fiables, admissibilité, pas de traduction automatique brute ni de liste.",
+        "Certaines éditions linguistiques ajoutent un minimum de 300 mots, que les exports ne permettent pas de mesurer."
+      ],
+      "scoring": {
+        "thresholds": {
+          "article_created_min_chars": 3000,
+          "article_improved_min_chars": 3000
+        },
+        "rules": {
+          "article_mode": "flat",
+          "enabled": [
+            "article_created",
+            "article_translated",
+            "article_edited"
+          ]
+        },
+        "points": {
+          "article_created": 1,
+          "article_translated": 1,
+          "article_edited": 1
+        }
+      }
+    },
+    {
       "id": "onelib1ref",
       "label": "#1Lib1Ref",
       "description": "Campagne « un bibliothécaire, une référence » : seules les références ajoutées comptent, un point chacune. La campagne n'a pas de barème officiel ; le mot-dièse #1Lib1Ref du résumé de modification n'apparaît pas dans les exports.",

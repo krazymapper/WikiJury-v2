@@ -556,6 +556,34 @@
               "total": 0
             }
           ]
+        },
+        {
+          "name": "Wikipedia African Month : 3 000 octets minimum",
+          "preset": "wam",
+          "scoring": {},
+          "excluded": [],
+          "ranking": [
+            {
+              "username": "Abla Exemple",
+              "rank": 1,
+              "total": 1.5
+            },
+            {
+              "username": "Bio Exemple",
+              "rank": 2,
+              "total": 0.5
+            },
+            {
+              "username": "Codjo Exemple",
+              "rank": 3,
+              "total": 0
+            },
+            {
+              "username": "Dossi Exemple",
+              "rank": 3,
+              "total": 0
+            }
+          ]
         }
       ]
     },
