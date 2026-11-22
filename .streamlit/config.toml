@@ -1,11 +1,22 @@
+# Palettes de la version Streamlit, alignées sur la version web.
+# Le thème clair ou sombre se choisit dans le menu de l'application (⋮ → Settings).
+
 [theme]
-base = "light"
+baseRadius = "medium"
+
+[theme.light]
 primaryColor = "#006699"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#EEF1EE"
 textColor = "#1C2633"
 borderColor = "#D5DBD6"
-baseRadius = "medium"
+
+[theme.dark]
+primaryColor = "#6CB6DD"
+backgroundColor = "#13171D"
+secondaryBackgroundColor = "#1B2129"
+textColor = "#E8ECF1"
+borderColor = "#313945"
 
 [server]
 maxUploadSize = 25

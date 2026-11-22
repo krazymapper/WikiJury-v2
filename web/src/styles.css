@@ -40,7 +40,49 @@
   --step-5: clamp(2rem, 1.2rem + 3vw, 3.25rem);
 
   --rail: 22rem;
+  --primary-bg: var(--blue);
+  --primary-hover: var(--blue-deep);
+  --on-primary: #ffffff;
+  --row-hover: #f7f9f7;
+  --placeholder: #a9b3ad;
   color-scheme: light;
+}
+
+/* Mode sombre : mêmes rôles, contrastes vérifiés (texte ≥ 4,5:1 sur les surfaces). */
+:root[data-theme='dark'] {
+  --paper: #13171d;
+  --surface: #1b2129;
+  --ink: #e8ecf1;
+  --ink-2: #b6bfca;
+  --ink-3: #8f99a6;
+  --line: #313945;
+  --line-soft: #262d37;
+  --blue: #6cb6dd;
+  --blue-deep: #93cbe8;
+  --blue-wash: #1c3344;
+  --green: #63c48f;
+  --red: #ff8f85;
+  --red-wash: #3a2023;
+  --ochre: #e6b552;
+  --ochre-wash: #33291a;
+
+  --c-article_created: #4fa3d1;
+  --c-article_translated: #9ccbe4;
+  --c-article_long: #4fa3d1;
+  --c-article_short: #9ccbe4;
+  --c-article_edited: #8d97a6;
+  --c-reference_added: #e07ba6;
+  --c-wikidata_item: #5cc08a;
+  --c-photo_uploaded: #ead08e;
+  --c-photo_uploaded_used: #e3a83a;
+  --c-photo_existing_used: #b39ddb;
+
+  --primary-bg: #6cb6dd;
+  --primary-hover: #93cbe8;
+  --on-primary: #0d1b26;
+  --row-hover: #212832;
+  --placeholder: #5f6874;
+  color-scheme: dark;
 }
 
 *,
@@ -106,7 +148,7 @@ a:hover {
   z-index: 10;
   padding: 0.5rem 1rem;
   background: var(--ink);
-  color: #fff;
+  color: var(--surface);
   border-radius: 6px;
 }
 
@@ -133,12 +175,12 @@ a:hover {
 }
 
 .btn-primary {
-  background: var(--blue);
-  color: #fff;
+  background: var(--primary-bg);
+  color: var(--on-primary);
 }
 
 .btn-primary:not(:disabled):hover {
-  background: var(--blue-deep);
+  background: var(--primary-hover);
 }
 
 .btn-quiet {
@@ -216,6 +258,60 @@ a:hover {
 .brand-name {
   font: 800 1.35rem / 1 var(--f-display);
   letter-spacing: -0.02em;
+}
+
+.site-nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-right: auto;
+  margin-left: 1.5rem;
+}
+
+.site-nav a {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-weight: 700;
+  font-size: var(--step--1);
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  color: var(--ink);
+  background: var(--line-soft);
+}
+
+.site-nav a[aria-current='page'] {
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--blue);
+  border-radius: 6px 6px 0 0;
+}
+
+.theme-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.theme-toggle .icon-sun,
+:root[data-theme='dark'] .theme-toggle .icon-moon {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-toggle .icon-sun {
+  display: block;
 }
 
 .topbar-actions {
@@ -675,7 +771,7 @@ a:hover {
 }
 
 .campaign-name::placeholder {
-  color: #a9b3ad;
+  color: var(--placeholder);
 }
 
 .campaign-name:hover {
@@ -849,7 +945,7 @@ a:hover {
 }
 
 .ranking tbody tr:hover {
-  background: #f7f9f7;
+  background: var(--row-hover);
 }
 
 .col-rank {
@@ -1148,11 +1244,118 @@ a:hover {
 
 .footer-partners img {
   width: auto;
-  border-radius: 6px;
+  padding: 6px;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .print-only {
   display: none;
+}
+
+/* ---------------------------------------------------------------- pages À propos et FAQ */
+
+.page {
+  flex: 1;
+  width: 100%;
+  padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 4vw, 2rem) 4rem;
+  outline: none;
+}
+
+.page-inner {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.page-title {
+  font-size: var(--step-5);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.page-lead {
+  margin: 1rem 0 0;
+  font-size: var(--step-2);
+  line-height: 1.45;
+  color: var(--ink-2);
+  max-width: 38em;
+}
+
+.page-section {
+  margin-top: 2.5rem;
+}
+
+.page-section h2 {
+  margin-bottom: 0.75rem;
+  font-size: var(--step-2);
+  font-weight: 700;
+}
+
+.page-section p,
+.page-section li {
+  max-width: 68ch;
+}
+
+.page-section ul {
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 2.5rem;
+}
+
+.page-meta {
+  margin-top: 1.5rem;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--line);
+}
+
+.faq-item:first-of-type {
+  border-top: 1px solid var(--line);
+}
+
+.faq-item summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0.25rem;
+  font-weight: 700;
+  font-size: var(--step-1);
+  line-height: 1.35;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item summary::after {
+  content: '+';
+  flex: none;
+  color: var(--blue);
+  font: 700 1.4rem / 1 var(--f-display);
+  transition: transform 150ms;
+}
+
+.faq-item[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.faq-item p {
+  margin: 0 0 1rem;
+  padding: 0 0.25rem;
+  color: var(--ink-2);
+  max-width: 68ch;
 }
 
 /* ---------------------------------------------------------------- petits écrans */
@@ -1170,6 +1373,15 @@ a:hover {
   .rail {
     border-right: 0;
     border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  .site-nav {
+    order: 3;
+    width: 100%;
+    margin: 0;
+    overflow-x: auto;
   }
 }
 
@@ -1233,6 +1445,7 @@ a:hover {
 
   body {
     background: #fff;
+    color: #000;
     font-family: var(--f-display);
     font-size: 10.5pt;
   }

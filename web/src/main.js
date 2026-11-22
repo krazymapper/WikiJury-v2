@@ -8,6 +8,7 @@ import './styles.css';
 import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
 import presetsSpec from '../../shared/presets.json';
+import content from '../../shared/content.json';
 import { detectKind, mapColumns, missingFields } from './engine/columns.js';
 import { ARTICLE_MODES, COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, enabledCriteria, isGridCriterion, mergeScoring, shownCriteria, wikisInData } from './engine/scoring.js';
 import { normalizeUsername } from './engine/normalize.js';
@@ -132,7 +133,7 @@ function loadSample() {
     return entry;
   });
   if (!state.campaign) {
-    state.campaign = 'Concours d’exemple (données fictives, format Outreach Dashboard)';
+    state.campaign = 'Concours d’exemple (données fictives)';
     $('[data-campaign]').value = state.campaign;
   }
   persist();
@@ -900,5 +901,118 @@ function bind() {
   dialog.addEventListener('close', () => sheetOpener?.isConnected && sheetOpener.focus());
 }
 
+/* --------------------------------------------------- pages À propos et FAQ */
+
+function renderAbout() {
+  const a = content.about;
+  mount($('[data-view="about"]'),
+    h('article', { class: 'page-inner' },
+      h('h1', { id: 'about-title', class: 'page-title', text: a.title }),
+      h('p', { class: 'page-lead', text: a.lead }),
+      ...a.sections.map((sec) => h('section', { class: 'page-section' },
+        h('h2', { text: sec.heading }),
+        ...(sec.paragraphs ?? []).map((t) => h('p', { text: t })),
+        sec.items ? h('ul', {}, ...sec.items.map((t) => h('li', { text: t }))) : null)),
+      h('p', { class: 'page-links' }, ...a.links.map((l) => h('a', { class: 'btn btn-quiet', href: l.url, target: '_blank', rel: 'noopener noreferrer', text: l.label }))),
+      h('p', { class: 'page-meta', text: `Version ${__APP_VERSION__}` })));
+}
+
+function renderFaq() {
+  const f = content.faq;
+  mount($('[data-view="faq"]'),
+    h('article', { class: 'page-inner' },
+      h('h1', { id: 'faq-title', class: 'page-title', text: f.title }),
+      ...f.groups.map((g) => h('section', { class: 'page-section' },
+        h('h2', { text: g.heading }),
+        ...g.questions.map((item) => h('details', { class: 'faq-item', id: `faq-${item.id}` },
+          h('summary', { text: item.q }),
+          ...item.a.map((t) => h('p', { text: t }))))))));
+}
+
+/* ------------------------------------------------------------- routage */
+
+const ROUTES = { '': 'ranking', 'a-propos': 'about', faq: 'faq' };
+const TITLES = { ranking: 'WikiJury : classement des concours Wikimedia', about: 'À propos · WikiJury', faq: 'FAQ · WikiJury' };
+
+/** « #/faq#co-auteurs » → { view: 'faq', anchor: 'co-auteurs' } ; tout autre fragment → classement. */
+function currentView() {
+  const hash = location.hash;
+  if (!hash.startsWith('#/')) return { view: 'ranking' };
+  const [path, anchor] = hash.slice(2).split('#');
+  return { view: ROUTES[path] ?? 'ranking', anchor };
+}
+
+function route() {
+  const { view, anchor } = currentView();
+  for (const el of document.querySelectorAll('[data-view]')) el.hidden = el.dataset.view !== view;
+  for (const el of document.querySelectorAll('[data-ranking-only]')) el.hidden = view !== 'ranking';
+  for (const link of document.querySelectorAll('[data-route]')) {
+    if (link.dataset.route === view) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  document.title = TITLES[view];
+  if (view === 'faq' && anchor) {
+    const item = document.getElementById(`faq-${anchor}`);
+    if (item) {
+      item.open = true;
+      item.scrollIntoView();
+      item.querySelector('summary')?.focus();
+      return;
+    }
+  }
+  if (view !== 'ranking') {
+    window.scrollTo(0, 0);
+    document.querySelector(`[data-view="${view}"]`).focus({ preventScroll: true });
+  }
+}
+
+/* --------------------------------------------------------------- thème */
+
+function applyTheme(theme, save) {
+  document.documentElement.dataset.theme = theme;
+  const btn = $('[data-action="theme"]');
+  const dark = theme === 'dark';
+  btn.setAttribute('aria-pressed', String(dark));
+  btn.title = dark ? 'Mode clair' : 'Mode sombre';
+  if (save) {
+    try {
+      localStorage.setItem('wikijury:theme', theme);
+    } catch {
+      /* stockage indisponible : le choix vaut pour cette visite */
+    }
+  }
+}
+
+function bindTheme() {
+  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light', false);
+  $('[data-action="theme"]').addEventListener('click', () => {
+    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+  });
+  // Sans choix explicite, le thème suit celui du système.
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    let saved = null;
+    try {
+      saved = localStorage.getItem('wikijury:theme');
+    } catch {
+      /* ignoré */
+    }
+    if (!saved) applyTheme(e.matches ? 'dark' : 'light', false);
+  });
+}
+
+function bindSkipLink() {
+  $('.skip-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    const visible = [...document.querySelectorAll('main')].find((m) => !m.closest('[hidden]') && !m.hidden);
+    visible?.focus();
+  });
+}
+
+renderAbout();
+renderFaq();
 bind();
+bindTheme();
+bindSkipLink();
+window.addEventListener('hashchange', route);
+route();
 recompute();

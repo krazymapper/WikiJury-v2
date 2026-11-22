@@ -29,6 +29,8 @@ Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doi
 - un **export CSV** prêt pour Excel et un **procès-verbal imprimable** avec emplacements de signature du jury ;
 - la possibilité de classer des personnes **hors concours** (organisateurs, membres du jury).
 
+L’interface propose aussi une page **À propos**, une **FAQ** et un **mode sombre** (bouton lune/soleil dans la version web ; menu ⋮ → Settings dans la version Streamlit). Le thème suit celui du système tant que vous n’en avez pas choisi un. Les textes des deux pages sont rédigés une seule fois dans [`shared/content.json`](shared/content.json).
+
 ## Types de campagne
 
 Chaque campagne a son règlement : le jury choisit un **type de campagne**, puis **coche les critères retenus** et ajuste points, minimums et grilles. Un critère décoché ne rapporte rien et disparaît du classement, de l’export et du procès-verbal. Chaque modèle affiche ses **sources**, la date de vérification et ce qui n’a pas pu être vérifié.
@@ -124,6 +126,8 @@ Le barème, la correspondance des colonnes et les jeux de test sont partagés da
 ├── shared/                 # Source de vérité commune
 │   ├── scoring.default.json  # Barème par défaut
 │   ├── columns.json          # Types de fichiers et en-têtes reconnus
+│   ├── presets.json          # Types de campagne et leurs sources
+│   ├── content.json          # Textes des pages À propos et FAQ
 │   ├── fixtures/             # Données fictives + résultats attendus
 │   └── brand/                # Logos optimisés
 ├── web/                    # Version navigateur (Vite, JavaScript sans framework)
@@ -132,7 +136,9 @@ Le barème, la correspondance des colonnes et les jeux de test sont partagés da
 │   └── test/                 # Tests Vitest
 ├── streamlit_app/          # Version Streamlit
 │   ├── wikijury/             # Moteur de calcul Python (sans dépendance)
-│   ├── app.py                # Interface
+│   ├── app.py                # Point d’entrée et navigation
+│   ├── ranking.py            # Page Classement
+│   ├── about.py, faq.py      # Pages À propos et FAQ
 │   └── tests/                # Tests pytest (moteur + interface)
 └── .github/workflows/      # Tests et publication GitHub Pages
 ```

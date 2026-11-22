@@ -4,7 +4,7 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-APP = str(Path(__file__).resolve().parents[1] / "app.py")
+APP = str(Path(__file__).resolve().parents[1] / "ranking.py")
 
 
 def test_home_then_sample():
@@ -85,3 +85,16 @@ def test_awc_grid_preset():
     # Données d'exemple : Abla 18 + Bio 12 + Codjo 7 (grille AWC 2025, co-auteurs partagés)
     assert any("37 points" in c.value for c in at.caption)
     assert any("symétrie" in w.value for w in at.warning)
+
+
+def test_about_and_faq_pages():
+    here = Path(__file__).resolve().parents[1]
+    about = AppTest.from_file(str(here / "about.py"), default_timeout=30).run()
+    assert not about.exception and "À propos" in about.title[0].value
+    faq = AppTest.from_file(str(here / "faq.py"), default_timeout=30).run()
+    assert not faq.exception and len(faq.expander) >= 10
+
+
+def test_router_runs_ranking_by_default():
+    router = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30).run()
+    assert not router.exception
