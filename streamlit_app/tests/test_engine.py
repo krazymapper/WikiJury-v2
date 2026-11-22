@@ -27,23 +27,35 @@ SPEC = load_columns_spec()
 DEFAULT = load_default_scoring()
 
 
-def load_datasets() -> list[Dataset]:
+SUITES = EXPECTED["suites"]
+
+
+def load_datasets(suite) -> list[Dataset]:
     datasets = []
-    for name in EXPECTED["files"]:
-        headers, rows = read_upload(name, (FIXTURES / name).read_bytes())
+    for name in suite["files"]:
+        headers, rows = read_upload(name, (FIXTURES / suite["dir"] / name).read_bytes())
         detection = detect_kind(headers, name, SPEC)
         datasets.append(Dataset(detection.kind, detection.mapping, rows, name))
     return datasets
 
 
-@pytest.mark.parametrize("name,kind", EXPECTED["files"].items())
-def test_detection(name, kind):
-    headers, _ = read_upload(name, (FIXTURES / name).read_bytes())
-    assert detect_kind(headers, name, SPEC).kind == kind
+@pytest.mark.parametrize(
+    "path,kind",
+    [(f"{s['dir']}/{n}", k) for s in SUITES for n, k in s["files"].items()],
+)
+def test_detection(path, kind):
+    headers, _ = read_upload(path, (FIXTURES / path).read_bytes())
+    assert detect_kind(headers, Path(path).name, SPEC).kind == kind
+
+
+def test_dashboard_detection_without_filename_hint():
+    for name, kind in SUITES[1]["files"].items():
+        headers, _ = read_upload(name, (FIXTURES / "dashboard" / name).read_bytes())
+        assert detect_kind(headers, "export.csv", SPEC).kind == kind
 
 
 def test_detection_without_filename_hint():
-    headers, _ = read_upload("uploads.csv", (FIXTURES / "uploads.csv").read_bytes())
+    headers, _ = read_upload("uploads.csv", (FIXTURES / "generic" / "uploads.csv").read_bytes())
     assert detect_kind(headers, "export.csv", SPEC).kind == "uploads"
 
 
@@ -69,10 +81,14 @@ def test_normalization():
     assert parse_bool("peut-être") is None
 
 
-@pytest.mark.parametrize("scenario", EXPECTED["scenarios"], ids=lambda s: s["name"])
-def test_ranking_parity(scenario):
+@pytest.mark.parametrize(
+    "suite,scenario",
+    [(s, sc) for s in SUITES for sc in s["scenarios"]],
+    ids=lambda x: x["name"],
+)
+def test_ranking_parity(suite, scenario):
     scoring = merge_scoring(DEFAULT, scenario["scoring"])
-    result = compute_ranking(load_datasets(), scoring, scenario["excluded"])
+    result = compute_ranking(load_datasets(suite), scoring, scenario["excluded"])
     with_counts = "counts" in scenario["ranking"][0]
     got = [
         {"username": p.username, "rank": p.rank, "total": p.total, **({"counts": p.counts} if with_counts else {})}
@@ -81,20 +97,30 @@ def test_ranking_parity(scenario):
     assert got == scenario["ranking"]
 
 
-def test_warnings():
-    result = compute_ranking(load_datasets(), merge_scoring(DEFAULT))
-    assert dict(Counter(w["code"] for w in result.warnings)) == EXPECTED["warnings"]
+@pytest.mark.parametrize("suite", SUITES, ids=lambda s: s["name"])
+def test_warnings_and_stats(suite):
+    result = compute_ranking(load_datasets(suite), merge_scoring(DEFAULT))
+    assert dict(Counter(w["code"] for w in result.warnings)) == suite["warnings"]
+    assert result.stats == suite["stats"]
 
 
 def test_evidence_is_kept():
-    result = compute_ranking(load_datasets(), merge_scoring(DEFAULT))
+    result = compute_ranking(load_datasets(SUITES[0]), merge_scoring(DEFAULT))
     aicha = next(p for p in result.participants if p.username == "Aïcha Dossou")
     too_short = next(e for e in aicha.evidence if e["label"] == "Marché Dantokpa")
     assert too_short["status"] == "too_short" and too_short["chars"] == 1200
 
 
+def test_coauthors_are_recorded():
+    result = compute_ranking(load_datasets(SUITES[1]), merge_scoring(DEFAULT))
+    abla = next(p for p in result.participants if p.username == "Abla Exemple")
+    abomey = next(e for e in abla.evidence if e["label"] == "Abomey")
+    assert abomey["status"] == "article_long" and abomey["share"] == 0.5
+    assert abomey["coauthors"] == ["Bio Exemple", "Abla Exemple"]
+
+
 def test_csv_export_is_safe():
-    result = compute_ranking(load_datasets(), merge_scoring(DEFAULT))
+    result = compute_ranking(load_datasets(SUITES[0]), merge_scoring(DEFAULT))
     result.participants[0].username = '=HYPERLINK("x")'
     csv_text = ranking_to_csv(result.participants, merge_scoring(DEFAULT))
     assert csv_text.startswith("﻿Rang;Contributeur")
@@ -104,3 +130,20 @@ def test_csv_export_is_safe():
 def test_unsupported_format():
     with pytest.raises(ValueError):
         read_upload("vieux.xls", b"x")
+
+
+def test_csv_with_doubled_quotes():
+    data = (
+        'title,namespace,wiki,usernames,characters_added,new,deleted\n'
+        '"Vote_""Colored""_water,_Oklahoma.jpg",4,commons.wikimedia.org,Abla Exemple,16,false,false\n'
+        'Abomey,0,fr.wikipedia.org,Abla Exemple,4500,true,false\n'
+    ).encode()
+    headers, rows = read_upload("course_articles.csv", data)
+    assert len(rows) == 2
+    assert rows[0]["title"] == 'Vote_"Colored"_water,_Oklahoma.jpg'
+    assert rows[0]["wiki"] == "commons.wikimedia.org"
+
+
+def test_semicolon_csv():
+    headers, rows = read_upload("x.csv", "Utilisateur;Titre;Caractères ajoutés\nAbla;Abomey;4500\n".encode())
+    assert headers == ["Utilisateur", "Titre", "Caractères ajoutés"] and rows[0]["Titre"] == "Abomey"

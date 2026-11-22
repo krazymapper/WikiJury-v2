@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 from typing import Any
 
-from .scoring import CRITERIA, CRITERION_SHORT, Participant
+from .scoring import COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, Participant
 
 MAX_FILE_BYTES = 25 * 1024 * 1024
 
@@ -18,12 +18,11 @@ class ImportError_(ValueError):
 
 def _read_csv(data: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     text = data.decode("utf-8-sig", errors="replace")
-    sample = text[:20000]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    # Seul le séparateur est deviné (sur la ligne d'en-têtes) : csv.Sniffer se trompe
+    # sur les guillemets doublés des exports du Dashboard. Le reste suit la RFC 4180.
+    header_line = text.split("\n", 1)[0]
+    delimiter = max([",", ";", "\t"], key=header_line.count)
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter)
     headers = [h.strip() for h in (reader.fieldnames or []) if h and h.strip()]
     rows = []
     for raw in reader:
@@ -64,7 +63,9 @@ def read_upload(name: str, data: bytes) -> tuple[list[str], list[dict[str, Any]]
 
 def _cell(value: Any) -> str:
     s = "" if value is None else str(value)
-    if not isinstance(value, (int, float)) and s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        s = s.replace(".", ",")  # décimale à la française pour Excel
+    elif s[:1] in ("=", "+", "-", "@", "\t", "\r"):
         s = "'" + s  # neutralise les formules dans un tableur
     if any(ch in s for ch in '";\n\r'):
         s = '"' + s.replace('"', '""') + '"'
@@ -91,6 +92,12 @@ def ranking_to_csv(participants: list[Participant], scoring: dict[str, Any]) -> 
         + [
             f"Article long ≥ {scoring['thresholds']['article_long_min_chars']} car.",
             f"Article court ≥ {scoring['thresholds']['article_short_min_chars']} car.",
+            f"Co-auteurs : {COAUTHOR_RULES[scoring['rules']['coauthors']]}",
         ]
+        + (
+            [f"Wikis non retenus : {', '.join(scoring['rules']['excluded_wikis'])}"]
+            if scoring["rules"].get("excluded_wikis")
+            else []
+        )
     )
     return "﻿" + "\r\n".join(";".join(_cell(v) for v in line) for line in lines)

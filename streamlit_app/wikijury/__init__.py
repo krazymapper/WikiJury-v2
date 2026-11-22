@@ -2,6 +2,7 @@
 
 from .columns import detect_kind, load_columns_spec, map_columns, missing_fields
 from .scoring import (
+    COAUTHOR_RULES,
     CRITERIA,
     CRITERION_SHORT,
     Dataset,
@@ -9,10 +10,13 @@ from .scoring import (
     criterion_label,
     load_default_scoring,
     merge_scoring,
+    wikis_in_data,
 )
 
 __version__ = "3.0.0"
 __all__ = [
+    "COAUTHOR_RULES",
+    "wikis_in_data",
     "CRITERIA",
     "CRITERION_SHORT",
     "Dataset",

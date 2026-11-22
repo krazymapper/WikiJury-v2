@@ -8,7 +8,7 @@ import './styles.css';
 import columnsSpec from '../../shared/columns.json';
 import defaultScoring from '../../shared/scoring.default.json';
 import { detectKind, mapColumns, missingFields } from './engine/columns.js';
-import { CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, mergeScoring } from './engine/scoring.js';
+import { COAUTHOR_RULES, CRITERIA, CRITERION_SHORT, computeRanking, criterionLabel, mergeScoring, wikisInData } from './engine/scoring.js';
 import { normalizeUsername } from './engine/normalize.js';
 import { download, parseCsvText, parseFile, rankingToCsv, slugify } from './io.js';
 import { SAMPLE_FILES } from './sample.js';
@@ -16,7 +16,7 @@ import { SAMPLE_FILES } from './sample.js';
 /* ------------------------------------------------------------------ état */
 
 const STORAGE_KEY = 'wikijury:v3';
-const SCORED_KINDS = ['articles', 'uploads', 'wikidata', 'existing_photos'];
+const SCORED_KINDS = ['dashboard_articles', 'articles', 'uploads', 'wikidata', 'existing_photos'];
 
 const stored = loadStored();
 const state = {
@@ -24,7 +24,7 @@ const state = {
   scoring: mergeScoring(defaultScoring, stored.scoring),
   campaign: stored.campaign ?? '',
   excluded: stored.excluded ?? [],
-  result: { participants: [], warnings: [] },
+  result: { participants: [], warnings: [], stats: { deleted: 0, ignored: 0 } },
 };
 let nextId = 1;
 
@@ -50,8 +50,13 @@ function persist() {
 /* ------------------------------------------------------------- utilitaires */
 
 const $ = (sel) => document.querySelector(sel);
-const fmt = new Intl.NumberFormat('fr-FR');
+const fmt = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
 const plural = (n, one, many) => `${fmt.format(n)} ${Math.abs(n) >= 2 ? many : one}`;
+
+/** Remplace le contenu d'un élément en ignorant les enfants vides (null, false). */
+function mount(el, ...children) {
+  el.replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+}
 
 /** Crée un élément sans jamais interpréter de HTML venant des fichiers. */
 function h(tag, attrs = {}, ...children) {
@@ -124,7 +129,7 @@ function loadSample() {
     return entry;
   });
   if (!state.campaign) {
-    state.campaign = 'Concours d’exemple (données fictives)';
+    state.campaign = 'Concours d’exemple (données fictives, format Outreach Dashboard)';
     $('[data-campaign]').value = state.campaign;
   }
   persist();
@@ -147,7 +152,7 @@ function render() {
 
 function renderFiles() {
   const list = $('[data-file-list]');
-  list.replaceChildren(...state.files.map(fileItem));
+  mount(list, ...state.files.map(fileItem));
 }
 
 function fileItem(file) {
@@ -186,10 +191,11 @@ function fileItem(file) {
   h('option', { value: '', selected: !file.kind, text: 'Ne pas utiliser ce fichier' }));
 
   let status;
-  if (!file.kind) status = h('p', { class: 'file-status is-muted', text: 'Fichier ignoré.' });
+  if (spec?.unusable) status = h('p', { class: 'file-status is-warn', text: spec.description });
+  else if (!file.kind) status = h('p', { class: 'file-status is-muted', text: 'Fichier ignoré.' });
   else if (missing.length) status = h('p', { class: 'file-status is-warn', text: `${plural(missing.length, 'colonne', 'colonnes')} à associer avant le calcul.` });
   else {
-    const note = file.kind === 'editors' ? 'sert de liste des participants' : 'pris en compte';
+    const note = file.kind === 'editors' ? 'sert de liste des participants' : 'prises en compte';
     status = h('p', { class: 'file-status is-ok', text: `${plural(file.rows.length, 'ligne', 'lignes')}, ${note}.` });
   }
 
@@ -212,12 +218,12 @@ function fileItem(file) {
       })
     : [];
 
-  return h('li', { class: `file${missing.length ? ' is-warn' : ''}` },
+  return h('li', { class: `file${missing.length || spec?.unusable ? ' is-warn' : ''}` },
     h('div', { class: 'file-head' }, h('span', { class: 'file-name', text: file.name, title: file.name }), remove),
     h('label', { class: 'visually-hidden', for: selectId, text: `Type du fichier ${file.name}` }),
     kindSelect,
     status,
-    spec ? h('details', { class: 'mapping', open: missing.length > 0 },
+    spec && !spec.unusable ? h('details', { class: 'mapping', open: missing.length > 0 },
       h('summary', { text: 'Colonnes utilisées' }),
       ...mappingRows) : null,
   );
@@ -233,6 +239,11 @@ const FIELD_LABELS = {
   item: 'Identifiant Wikidata',
   quantity: 'Nombre d’éléments',
   article: 'Article',
+  usernames: 'Participants',
+  wiki: 'Wiki',
+  namespace: 'Espace de noms',
+  deleted: 'Supprimé',
+  course: 'Campagne',
   edits: 'Modifications',
   bytes: 'Octets ajoutés',
   references: 'Références ajoutées',
@@ -260,10 +271,52 @@ function renderScoring() {
     }
   }
   scoringUi.error.hidden = valid;
+  scoringUi.coauthors.value = state.scoring.rules.coauthors;
+  renderWikis();
+}
+
+/** Cases à cocher des Wikipédias trouvées dans l'export « articles » du Dashboard. */
+function renderWikis() {
+  const box = scoringUi.wikis;
+  const wikis = wikisInData(usableDatasets());
+  box.hidden = wikis.length < 2;
+  if (box.hidden) return;
+  const excluded = new Set(state.scoring.rules.excluded_wikis);
+  mount(box, 
+    h('legend', { class: 'rules-label', text: 'Wikipédias prises en compte' }),
+    ...wikis.map((wiki) => {
+      const id = `wiki-${wiki}`;
+      return h('div', { class: 'check' },
+        h('input', {
+          type: 'checkbox',
+          id,
+          checked: !excluded.has(wiki),
+          onchange: (e) => {
+            const set = new Set(state.scoring.rules.excluded_wikis);
+            if (e.target.checked) set.delete(wiki);
+            else set.add(wiki);
+            state.scoring.rules.excluded_wikis = [...set].sort();
+            persist();
+            recompute();
+          },
+        }),
+        h('label', { for: id, text: wiki.replace('.wikipedia.org', '') + '.wikipedia' }));
+    }),
+  );
 }
 
 function buildScoring() {
   const ui = { labels: {}, points: {}, thresholds: {}, error: null };
+  ui.coauthors = h('select', {
+    id: 'rule-coauthors',
+    class: 'select select-sm',
+    onchange: (e) => {
+      state.scoring.rules.coauthors = e.target.value;
+      persist();
+      recompute();
+    },
+  }, ...Object.entries(COAUTHOR_RULES).map(([value, text]) => h('option', { value, text })));
+  ui.wikis = h('fieldset', { class: 'wikis', hidden: true });
   const pointsRows = CRITERIA.map((c) => {
     const id = `pts-${c}`;
     ui.labels[c] = h('label', { for: id, class: 'score-label' });
@@ -310,12 +363,17 @@ function buildScoring() {
     text: 'Le seuil de l’article court doit être inférieur à celui de l’article long. Le classement affiché reste celui du dernier barème valide.',
   });
 
-  $('[data-scoring]').replaceChildren(
+  mount($('[data-scoring]'), 
     h('div', { class: 'score-list' }, ...pointsRows),
     h('div', { class: 'thresholds' },
       threshold('article_long_min_chars', 'Article long à partir de'),
       threshold('article_short_min_chars', 'Article court à partir de'),
       ui.error),
+    h('div', { class: 'rules' },
+      h('label', { for: 'rule-coauthors', class: 'rules-label', text: 'Pages créées à plusieurs' }),
+      ui.coauthors,
+      h('p', { class: 'rules-help', text: 'L’export du Dashboard liste tous les participants ayant modifié une page, sans dire qui l’a créée.' }),
+      ui.wikis),
   );
   return ui;
 }
@@ -331,7 +389,7 @@ function updatePoints(criterion, input) {
 function renderExcluded() {
   const panel = $('[data-excluded-panel]');
   panel.hidden = state.excluded.length === 0;
-  $('[data-excluded-list]').replaceChildren(
+  mount($('[data-excluded-list]'), 
     ...state.excluded.map((name) =>
       h('li', {},
         h('span', { text: name }),
@@ -357,7 +415,7 @@ function renderStage() {
 
   if (!scored) {
     summary.textContent = '';
-    stage.replaceChildren(emptyState());
+    mount(stage, emptyState());
     return;
   }
 
@@ -365,16 +423,34 @@ function renderStage() {
   const totalPoints = ranked.reduce((s, p) => s + p.total, 0);
   summary.textContent = `${plural(ranked.length, 'participant classé', 'participants classés')}, ${plural(totalPoints, 'point attribué', 'points attribués')}.`;
 
-  stage.replaceChildren(
+  mount(stage, 
     legend(),
+    notices(),
     warnings.length ? warningsBlock(warnings) : null,
     rankingTable(participants),
   );
 }
 
+function notices() {
+  const { stats, participants } = state.result;
+  const items = [];
+  const unknownPhotos = participants.reduce((n, p) => n + p.evidence.filter((e) => e.status === 'photo_usage_unknown' && e.share > 0).length, 0);
+  if (unknownPhotos > 0) {
+    items.push(`${plural(unknownPhotos, 'photo téléversée n’est pas notée', 'photos téléversées ne sont pas notées')} : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.`);
+  }
+  if (stats.ignored > 0) {
+    items.push(`${plural(stats.ignored, 'page hors critères ignorée', 'pages hors critères ignorées')} (articles existants modifiés, pages de discussion ou utilisateur, éléments Wikidata modifiés).`);
+  }
+  if (stats.deleted > 0) items.push(`${plural(stats.deleted, 'page supprimée écartée', 'pages supprimées écartées')}.`);
+  if (state.scoring.rules.coauthors !== 'all' && participants.some((p) => p.evidence.some((e) => e.coauthors))) {
+    items.push(`Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.`);
+  }
+  return items.length ? h('ul', { class: 'notices' }, ...items.map((t) => h('li', { text: t }))) : null;
+}
+
 function emptyState() {
   const steps = [
-    ['Exportez vos données', 'Depuis l’Outreach Dashboard ou un autre outil : articles créés, photos téléversées, éléments Wikidata, liste des participants.'],
+    ['Exportez vos données', 'Les fichiers CSV « articles », « uploads » et « editors » de l’Outreach Dashboard suffisent. Des tableaux maison sont aussi acceptés.'],
     ['Déposez les fichiers', 'WikiJury reconnaît le type de chaque fichier et ses colonnes. Vous pouvez corriger son choix.'],
     ['Ajustez le barème', 'Les points et les seuils de taille se modifient dans le panneau « Barème » ; le classement se met à jour aussitôt.'],
   ];
@@ -413,8 +489,8 @@ function rankingTable(participants) {
   const rows = participants.map((p) => {
     const segments = CRITERIA.filter((c) => p.points[c] > 0).map((c) =>
       h('span', {
-        class: `seg c-${c}`,
-        style: { width: `${(p.points[c] / max) * 100}%`, '--n': String(p.points[c]) },
+        class: `seg c-${c}${Number.isInteger(p.points[c]) ? '' : ' no-ticks'}`,
+        style: { width: `${(p.points[c] / max) * 100}%`, '--n': Number.isInteger(p.points[c]) ? String(p.points[c]) : null },
         title: `${CRITERION_SHORT[c]} : ${p.counts[c]} × ${state.scoring.points[c]} = ${p.points[c]} pts`,
       }));
     const tie = p.rank !== null && participants.filter((o) => o.rank === p.rank).length > 1;
@@ -453,6 +529,8 @@ const STATUS_TEXT = {
   article_short: () => 'Article court',
   too_short: (e) => `Trop court : ${fmt.format(e.chars)} car., minimum ${fmt.format(state.scoring.thresholds.article_short_min_chars)}`,
   not_new: () => 'Non créé pendant la campagne',
+  wiki_excluded: (e) => `${e.wiki} n’est pas retenue par le jury`,
+  photo_usage_unknown: () => 'Usage inconnu : ajoutez l’export « uploads »',
   photo_uploaded_used: (e) => `Utilisée ${plural(e.usage, 'fois', 'fois')}`,
   photo_unused: () => 'Non utilisée dans un article',
   wikidata_item: () => 'Élément créé',
@@ -476,6 +554,15 @@ function evidenceLink(e) {
   return h('span', { text: e.label });
 }
 
+function coauthorText(e, username) {
+  if (!e.coauthors) return '';
+  const others = e.coauthors.filter((u) => u !== username);
+  const list = others.length > 1 ? `${others.slice(0, -1).join(', ')} et ${others.at(-1)}` : others[0];
+  if (e.share === 0) return `Créditée à ${e.coauthors[0]}, premier participant listé (avec ${list})`;
+  if (e.share < 1) return `Avec ${list} : points partagés (1/${e.coauthors.length})`;
+  return `Avec ${list}`;
+}
+
 let sheetOpener = null;
 
 function openSheet(username, opener) {
@@ -495,12 +582,12 @@ function openSheet(username, opener) {
     return h('section', { class: 'evidence' },
       h('h3', { text: `${title} (${items.length})` }),
       h('ul', {}, ...items.map((e) => {
-        const counted = CRITERIA.includes(e.status);
+        const counted = CRITERIA.includes(e.status) && e.share > 0;
         return h('li', { class: counted ? 'is-counted' : 'is-ignored' },
           h('span', { class: `swatch ${counted ? `c-${e.status}` : 'c-none'}`, 'aria-hidden': 'true' }),
           h('span', { class: 'ev-label' }, evidenceLink(e)),
-          h('span', { class: 'ev-status', text: STATUS_TEXT[e.status]?.(e) ?? '' }),
-          h('span', { class: 'ev-points', text: counted ? `+${state.scoring.points[e.status] * (e.quantity ?? 1)}` : '0' }));
+          h('span', { class: 'ev-status', text: [STATUS_TEXT[e.status]?.(e), coauthorText(e, p.username)].filter(Boolean).join('. ') }),
+          h('span', { class: 'ev-points', text: counted ? `+${fmt.format(state.scoring.points[e.status] * e.share * (e.quantity ?? 1))}` : '0' }));
       })));
   });
 
@@ -513,7 +600,7 @@ function openSheet(username, opener) {
       ].filter(Boolean).join(', ') + ' pendant la campagne (pour information, sans points).' })
     : null;
 
-  $('[data-sheet-body]').replaceChildren(
+  mount($('[data-sheet-body]'), 
     h('header', { class: 'sheet-head' },
       h('div', {},
         h('p', { class: 'sheet-rank', text: p.excluded ? 'Hors concours' : `${p.rank}${p.rank === 1 ? 'er' : 'e'} du classement` }),
@@ -545,11 +632,12 @@ function openSheet(username, opener) {
 function renderPrint() {
   const date = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date());
   const { participants } = state.result;
-  $('[data-print]').replaceChildren(
+  mount($('[data-print]'), 
     h('h1', { text: state.campaign || 'Classement du concours' }),
     h('p', { text: `Procès-verbal établi le ${date} avec WikiJury.` }),
     h('h2', { text: 'Barème appliqué' }),
     h('table', {}, h('tbody', {}, ...CRITERIA.map((c) => h('tr', {}, h('td', { text: criterionLabel(c, state.scoring) }), h('td', { text: plural(state.scoring.points[c], 'point', 'points') }))))),
+    h('p', { text: `Pages créées à plusieurs : ${COAUTHOR_RULES[state.scoring.rules.coauthors].toLowerCase()}.${state.scoring.rules.excluded_wikis.length ? ` Wikis non retenus : ${state.scoring.rules.excluded_wikis.join(', ')}.` : ''}` }),
     h('h2', { text: 'Classement' }),
     h('table', {},
       h('thead', {}, h('tr', {}, h('th', { text: 'Rang' }), h('th', { text: 'Contributeur' }), ...CRITERIA.map((c) => h('th', { text: CRITERION_SHORT[c] })), h('th', { text: 'Total' }))),
@@ -557,7 +645,7 @@ function renderPrint() {
         h('td', { text: p.excluded ? 'H.C.' : String(p.rank) }),
         h('td', { text: p.username }),
         ...CRITERIA.map((c) => h('td', { text: String(p.counts[c]) })),
-        h('td', { text: String(p.total) }))))),
+        h('td', { text: fmt.format(p.total) }))))),
     h('p', { class: 'print-note', text: 'Les colonnes de critères indiquent le nombre de contributions retenues. H.C. : hors concours.' }),
     h('div', { class: 'signatures' }, ...[1, 2, 3].map(() => h('div', {}, h('span', { text: 'Membre du jury : nom et signature' })))),
   );

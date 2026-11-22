@@ -23,8 +23,17 @@ def test_scoring_change_updates_ranking():
     at.number_input(key="pts_article_long").set_value(10).run()
     assert not at.exception
     caption = next(c.value for c in at.caption if "participants classés" in c.value)
-    # 18 + 16 + 11 + 10 + 0 = 55 points avec l'article long à 10 points
-    assert "55 points" in caption
+    # Données d'exemple (format Dashboard, co-auteurs partagés) : 18 + 8 + 7 + 0 = 33
+    assert "33 points" in caption
+
+
+def test_coauthor_rule():
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    at.button[0].click().run()
+    assert any("23 points" in c.value for c in at.caption)  # 10,5 + 7 + 5,5 + 0
+    at.selectbox(key="rule_coauthors").set_value("all").run()
+    assert not at.exception
+    assert any("34 points" in c.value for c in at.caption)  # 15 + 10 + 9 + 0
 
 
 def test_invalid_thresholds_are_reported():

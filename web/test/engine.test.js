@@ -10,26 +10,35 @@ import { normalizeUsername, normalizeTitle, parseBool, parseCount } from '../src
 import { computeRanking, mergeScoring } from '../src/engine/scoring.js';
 import { parseCsvText, rankingToCsv } from '../src/io.js';
 
-const fixture = (name) => readFileSync(fileURLToPath(new URL(`../../shared/fixtures/${name}`, import.meta.url)), 'utf8');
+const fixture = (path) => readFileSync(fileURLToPath(new URL(`../../shared/fixtures/${path}`, import.meta.url)), 'utf8');
 
-function loadDatasets() {
-  return Object.keys(expected.files).map((name) => {
-    const { headers, rows } = parseCsvText(fixture(name));
+function loadDatasets(suite) {
+  return Object.keys(suite.files).map((name) => {
+    const { headers, rows } = parseCsvText(fixture(`${suite.dir}/${name}`));
     const { kind, mapping } = detectKind(headers, name, columnsSpec);
     return { kind, mapping, rows, source: name };
   });
 }
 
 describe('détection des fichiers', () => {
-  for (const [name, kind] of Object.entries(expected.files)) {
-    it(`${name} est reconnu comme « ${kind} »`, () => {
-      const { headers } = parseCsvText(fixture(name));
-      expect(detectKind(headers, name, columnsSpec).kind).toBe(kind);
-    });
+  for (const suite of expected.suites) {
+    for (const [name, kind] of Object.entries(suite.files)) {
+      it(`${suite.dir}/${name} est reconnu comme « ${kind} »`, () => {
+        const { headers } = parseCsvText(fixture(`${suite.dir}/${name}`));
+        expect(detectKind(headers, name, columnsSpec).kind).toBe(kind);
+      });
+    }
   }
 
+  it('reconnaît les exports du Dashboard sans indice dans le nom du fichier', () => {
+    for (const [name, kind] of Object.entries(expected.suites[1].files)) {
+      const { headers } = parseCsvText(fixture(`dashboard/${name}`));
+      expect(detectKind(headers, 'export.csv', columnsSpec).kind).toBe(kind);
+    }
+  });
+
   it('reconnaît le type même sans indice dans le nom du fichier', () => {
-    const { headers } = parseCsvText(fixture('uploads.csv'));
+    const { headers } = parseCsvText(fixture('generic/uploads.csv'));
     expect(detectKind(headers, 'export.csv', columnsSpec).kind).toBe('uploads');
   });
 
@@ -64,34 +73,45 @@ describe('normalisation', () => {
   });
 });
 
-describe('classement (parité avec shared/fixtures/expected.json)', () => {
-  const datasets = loadDatasets();
+for (const suite of expected.suites) {
+  describe(`classement, ${suite.name} (parité avec shared/fixtures/expected.json)`, () => {
+    const datasets = loadDatasets(suite);
 
-  for (const scenario of expected.scenarios) {
-    it(scenario.name, () => {
-      const scoring = mergeScoring(defaultScoring, scenario.scoring);
-      const { participants } = computeRanking(datasets, scoring, { excluded: scenario.excluded });
-      const got = participants.map((p) => ({
-        username: p.username,
-        rank: p.rank,
-        total: p.total,
-        ...(scenario.ranking[0].counts ? { counts: p.counts } : {}),
-      }));
-      expect(got).toEqual(scenario.ranking);
+    for (const scenario of suite.scenarios) {
+      it(scenario.name, () => {
+        const scoring = mergeScoring(defaultScoring, scenario.scoring);
+        const { participants } = computeRanking(datasets, scoring, { excluded: scenario.excluded });
+        const got = participants.map((p) => ({
+          username: p.username,
+          rank: p.rank,
+          total: p.total,
+          ...(scenario.ranking[0].counts ? { counts: p.counts } : {}),
+        }));
+        expect(got).toEqual(scenario.ranking);
+      });
+    }
+
+    it('signale les doublons et les lignes incomplètes, compte les pages écartées', () => {
+      const { warnings, stats } = computeRanking(datasets, mergeScoring(defaultScoring));
+      const byCode = warnings.reduce((acc, w) => ({ ...acc, [w.code]: (acc[w.code] ?? 0) + 1 }), {});
+      expect(byCode).toEqual(suite.warnings);
+      expect(stats).toEqual(suite.stats);
     });
-  }
+  });
+}
 
-  it('signale les doublons et les lignes incomplètes', () => {
-    const { warnings } = computeRanking(datasets, mergeScoring(defaultScoring));
-    const byCode = warnings.reduce((acc, w) => ({ ...acc, [w.code]: (acc[w.code] ?? 0) + 1 }), {});
-    expect(byCode).toEqual(expected.warnings);
+describe('pièces justificatives', () => {
+  it('garde la trace d’un article trop court', () => {
+    const { participants } = computeRanking(loadDatasets(expected.suites[0]), mergeScoring(defaultScoring));
+    const aicha = participants.find((p) => p.username === 'Aïcha Dossou');
+    expect(aicha.evidence.find((e) => e.label === 'Marché Dantokpa')).toMatchObject({ status: 'too_short', chars: 1200 });
   });
 
-  it('garde la trace de chaque point attribué', () => {
-    const { participants } = computeRanking(datasets, mergeScoring(defaultScoring));
-    const aicha = participants.find((p) => p.username === 'Aïcha Dossou');
-    const tooShort = aicha.evidence.find((e) => e.label === 'Marché Dantokpa');
-    expect(tooShort).toMatchObject({ status: 'too_short', chars: 1200 });
+  it('indique les co-auteurs et la part de points', () => {
+    const { participants } = computeRanking(loadDatasets(expected.suites[1]), mergeScoring(defaultScoring));
+    const abla = participants.find((p) => p.username === 'Abla Exemple');
+    const abomey = abla.evidence.find((e) => e.label === 'Abomey');
+    expect(abomey).toMatchObject({ status: 'article_long', share: 0.5, coauthors: ['Bio Exemple', 'Abla Exemple'] });
   });
 });
 

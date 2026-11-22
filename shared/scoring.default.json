@@ -10,5 +10,9 @@
     "wikidata_item": 3,
     "photo_uploaded_used": 2,
     "photo_existing_used": 1
+  },
+  "rules": {
+    "coauthors": "split",
+    "excluded_wikis": []
   }
 }

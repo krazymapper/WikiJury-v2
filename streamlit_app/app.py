@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from wikijury import (
+    COAUTHOR_RULES,
     CRITERIA,
     CRITERION_SHORT,
     Dataset,
@@ -27,12 +28,13 @@ from wikijury import (
     map_columns,
     merge_scoring,
     missing_fields,
+    wikis_in_data,
 )
 from wikijury.io import ImportError_, ranking_to_csv, read_upload
 
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = ROOT / "shared" / "brand"
-FIXTURES = ROOT / "shared" / "fixtures"
+FIXTURES = ROOT / "shared" / "fixtures" / "dashboard"
 
 st.set_page_config(
     page_title="WikiJury : classement des concours Wikimedia",
@@ -61,6 +63,11 @@ FIELD_LABELS = {
     "edits": "Modifications",
     "bytes": "Octets ajoutés",
     "references": "Références ajoutées",
+    "usernames": "Participants",
+    "wiki": "Wiki",
+    "namespace": "Espace de noms",
+    "deleted": "Supprimé",
+    "course": "Campagne",
 }
 STATUS_TEXT = {
     "article_long": "Article long",
@@ -71,11 +78,13 @@ STATUS_TEXT = {
     "photo_unused": "Non utilisée dans un article",
     "wikidata_item": "Élément créé",
     "photo_existing_used": "Ajoutée à un article",
+    "wiki_excluded": "Wiki non retenu par le jury",
+    "photo_usage_unknown": "Usage inconnu : ajoutez l’export « uploads »",
 }
 
 SPEC = load_columns_spec()
 DEFAULT_SCORING = load_default_scoring()
-SCORED_KINDS = {"articles", "uploads", "wikidata", "existing_photos"}
+SCORED_KINDS = {"dashboard_articles", "articles", "uploads", "wikidata", "existing_photos"}
 
 st.markdown(
     """
@@ -104,6 +113,7 @@ def init_state() -> None:
     for k, v in DEFAULT_SCORING["thresholds"].items():
         st.session_state.setdefault(f"th_{k}", int(v))
     st.session_state.setdefault("use_sample", False)
+    st.session_state.setdefault("rule_coauthors", DEFAULT_SCORING["rules"]["coauthors"])
     st.session_state.setdefault("campaign", "")
 
 
@@ -112,6 +122,13 @@ def reset_scoring() -> None:
         st.session_state[f"pts_{c}"] = v
     for k, v in DEFAULT_SCORING["thresholds"].items():
         st.session_state[f"th_{k}"] = v
+    st.session_state["rule_coauthors"] = DEFAULT_SCORING["rules"]["coauthors"]
+
+
+def fmt(n: float) -> str:
+    """Nombre à la française : espace fine pour les milliers, virgule décimale."""
+    text = f"{n:,.2f}".rstrip("0").rstrip(".") if isinstance(n, float) and n != int(n) else f"{int(n):,}"
+    return text.replace(",", "\u202f").replace(".", ",")
 
 
 def load_sample() -> None:
@@ -167,11 +184,19 @@ with st.sidebar:
     short_min = col_b.number_input(
         "Article court (car.)", min_value=1, step=100, key="th_article_short_min_chars",
     )
+    st.selectbox(
+        "Pages créées à plusieurs",
+        list(COAUTHOR_RULES),
+        format_func=COAUTHOR_RULES.get,
+        key="rule_coauthors",
+        help="L’export du Dashboard liste tous les participants ayant modifié une page, sans dire qui l’a créée.",
+    )
     st.button("Rétablir le barème par défaut", on_click=reset_scoring, width="stretch")
 
 scoring = merge_scoring(DEFAULT_SCORING, {
     "points": scoring_points,
     "thresholds": {"article_long_min_chars": int(long_min), "article_short_min_chars": int(short_min)},
+    "rules": {"coauthors": st.session_state.rule_coauthors},
 })
 scoring_valid = short_min < long_min
 
@@ -196,7 +221,7 @@ if uploads:
         except Exception:  # fichier corrompu : on l'explique sans planter l'application
             files.append({"name": up.name, "headers": [], "rows": [], "error": "Lecture impossible : le fichier semble endommagé."})
 elif st.session_state.use_sample:
-    for name in ["editors.csv", "articles.csv", "uploads.csv", "wikidata.csv", "existing_photos.csv"]:
+    for name in ["course_editors.csv", "course_articles.csv", "course_uploads.csv"]:
         headers, rows = parse(name, (FIXTURES / name).read_bytes())
         files.append({"name": name, "headers": headers, "rows": rows, "error": None})
 
@@ -204,7 +229,7 @@ if not files:
     st.subheader("Un classement que chaque participant peut vérifier.")
     st.write("Chaque point attribué renvoie à l’article, la photo ou l’élément Wikidata qui l’a rapporté.")
     st.markdown(
-        "1. **Exportez vos données** depuis l’Outreach Dashboard ou un autre outil.\n"
+        "1. **Exportez vos données** : les fichiers CSV « articles », « uploads » et « editors » de l’Outreach Dashboard suffisent. Des tableaux maison sont aussi acceptés.\n"
         "2. **Déposez les fichiers** dans le panneau de gauche : leur type et leurs colonnes sont reconnus automatiquement.\n"
         "3. **Ajustez le barème** : le classement se met à jour aussitôt."
     )
@@ -230,6 +255,9 @@ with st.expander("Fichiers importés et colonnes utilisées", expanded=False):
             st.caption("Fichier ignoré.")
             continue
         spec = SPEC["kinds"][kind]
+        if spec.get("unusable"):
+            st.warning(spec["description"])
+            continue
         auto = map_columns(f["headers"], spec)
         mapping = {}
         cols = st.columns(len(spec["fields"]))
@@ -258,7 +286,11 @@ if not scoring_valid:
     st.stop()
 
 all_names = sorted({p.username for p in compute_ranking(datasets, scoring).participants})
+wikis = wikis_in_data(datasets)
 with st.sidebar:
+    if len(wikis) > 1:
+        kept = st.multiselect("Wikipédias prises en compte", wikis, default=wikis, key="kept_wikis")
+        scoring["rules"]["excluded_wikis"] = [w for w in wikis if w not in kept]
     st.markdown("#### Hors concours")
     excluded = st.multiselect(
         "Participants à ne pas classer (organisateurs, jury…)",
@@ -271,7 +303,20 @@ ranked = [p for p in result.participants if not p.excluded]
 
 # ------------------------------------------------------------------------- classement
 
-st.caption(f"{len(ranked)} participants classés, {sum(p.total for p in ranked)} points attribués.")
+st.caption(f"{len(ranked)} participants classés, {fmt(sum(p.total for p in ranked))} points attribués.")
+
+notices = []
+unknown_photos = sum(1 for p in result.participants for e in p.evidence if e["status"] == "photo_usage_unknown" and e["share"] > 0)
+if unknown_photos:
+    notices.append(f"{unknown_photos} photo(s) téléversée(s) non notée(s) : l’export « articles » ne donne pas leur nombre d’utilisations. Ajoutez l’export « uploads » du Dashboard pour les noter.")
+if result.stats["ignored"]:
+    notices.append(f"{fmt(result.stats['ignored'])} page(s) hors critères ignorée(s) (articles existants modifiés, pages de discussion ou utilisateur, éléments Wikidata modifiés).")
+if result.stats["deleted"]:
+    notices.append(f"{result.stats['deleted']} page(s) supprimée(s) écartée(s).")
+if scoring["rules"]["coauthors"] != "all" and any(e.get("coauthors") for p in result.participants for e in p.evidence):
+    notices.append(f"Pages créées à plusieurs : {COAUTHOR_RULES[scoring['rules']['coauthors']].lower()}.")
+if notices:
+    st.info("\n".join(f"- {n}" for n in notices))
 
 legend = "".join(
     f'<span style="--c:{COLORS[c]}">{CRITERION_SHORT[c]} ({scoring["points"][c]} pt{"s" if scoring["points"][c] > 1 else ""})</span>'
@@ -304,11 +349,11 @@ st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 table = pd.DataFrame([
     {"Rang": p.rank if p.rank else "H.C.", "Contributeur": p.username,
-     **{CRITERION_SHORT[c]: p.counts[c] for c in CRITERIA}, "Total": p.total}
+     **{CRITERION_SHORT[c]: p.counts[c] for c in CRITERIA}, "Total": float(p.total)}
     for p in result.participants
 ])
 st.dataframe(table, hide_index=True, width="stretch",
-             column_config={"Total": st.column_config.NumberColumn(format="%d pts")})
+             column_config={"Total": st.column_config.NumberColumn(format="%.2f pts")})
 
 st.download_button(
     "Exporter le classement (CSV)",
@@ -324,7 +369,7 @@ st.subheader("Détail d’un contributeur")
 who = st.selectbox("Contributeur", [p.username for p in result.participants], label_visibility="collapsed")
 p = next(x for x in result.participants if x.username == who)
 c1, c2 = st.columns([1, 2])
-c1.metric("Total", f"{p.total} pts", help="Hors concours" if p.excluded else f"Rang {p.rank}")
+c1.metric("Total", f"{fmt(p.total)} pts", help="Hors concours" if p.excluded else f"Rang {p.rank}")
 if p.context:
     c2.caption(
         "Pour information, sans points : "
@@ -332,7 +377,7 @@ if p.context:
     )
 st.dataframe(
     pd.DataFrame([
-        {"Critère": criterion_label(c, scoring), "Nombre": p.counts[c], "Barème": scoring["points"][c], "Points": p.points[c]}
+        {"Critère": criterion_label(c, scoring), "Nombre": p.counts[c], "Barème": scoring["points"][c], "Points": float(p.points[c])}
         for c in CRITERIA
     ]),
     hide_index=True, width="stretch",
@@ -347,10 +392,18 @@ if p.evidence:
             detail += f" ({e['usage']} fois)"
         elif e.get("article"):
             detail += f" dans « {e['article']} »"
-        counted = e["status"] in CRITERIA
+        if e.get("coauthors"):
+            others = ", ".join(u for u in e["coauthors"] if u != p.username)
+            if e["share"] == 0:
+                detail += f". Créditée à {e['coauthors'][0]}, premier participant listé (avec {others})"
+            elif e["share"] < 1:
+                detail += f". Avec {others} : points partagés (1/{len(e['coauthors'])})"
+            else:
+                detail += f". Avec {others}"
+        counted = e["status"] in CRITERIA and e["share"] > 0
         rows.append({
             "Pièce": e["label"], "Statut": detail,
-            "Points": scoring["points"][e["status"]] * e.get("quantity", 1) if counted else 0,
+            "Points": round(scoring["points"][e["status"]] * e["share"] * e.get("quantity", 1), 2) if counted else 0,
             "Fichier": e["source"],
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")

@@ -1,58 +1,344 @@
 {
   "_comment": "Correspondance entre les en-têtes des fichiers importés et les champs attendus par WikiJury. Les en-têtes sont comparés après normalisation (minuscules, sans accents, '_' et '-' remplacés par des espaces). Le premier alias trouvé l'emporte. Ce fichier est lu par la version web ET par la version Streamlit.",
-  "detection_order": ["wikidata", "uploads", "articles", "existing_photos", "editors"],
+  "detection_order": [
+    "dashboard_summary",
+    "dashboard_articles",
+    "wikidata",
+    "uploads",
+    "articles",
+    "existing_photos",
+    "editors"
+  ],
   "kinds": {
+    "dashboard_articles": {
+      "label": "Export « articles » du Dashboard",
+      "description": "Export « articles » de l'Outreach Dashboard : une ligne par page modifiée (articles Wikipédia, éléments Wikidata, fichiers Commons), avec la liste des participants.",
+      "filename_hints": [
+        "course_articles"
+      ],
+      "fields": {
+        "title": {
+          "required": true,
+          "aliases": [
+            "title"
+          ]
+        },
+        "usernames": {
+          "required": true,
+          "aliases": [
+            "usernames"
+          ]
+        },
+        "wiki": {
+          "required": true,
+          "aliases": [
+            "wiki"
+          ]
+        },
+        "namespace": {
+          "required": true,
+          "aliases": [
+            "namespace"
+          ]
+        },
+        "new": {
+          "required": true,
+          "aliases": [
+            "new"
+          ]
+        },
+        "characters": {
+          "required": true,
+          "aliases": [
+            "characters added"
+          ]
+        },
+        "deleted": {
+          "required": false,
+          "aliases": [
+            "deleted"
+          ]
+        }
+      }
+    },
+    "dashboard_summary": {
+      "label": "Totaux de campagne (non exploitable)",
+      "description": "Export de totaux pour toute la campagne (par exemple l'export « wikidata » du Dashboard). Sans nom d'utilisateur, il ne permet pas de classer les participants : les éléments Wikidata créés sont lus dans l'export « articles ».",
+      "filename_hints": [
+        "course_wikidata"
+      ],
+      "unusable": true,
+      "fields": {
+        "course": {
+          "required": true,
+          "aliases": [
+            "course name"
+          ]
+        }
+      }
+    },
     "articles": {
       "label": "Articles créés",
       "description": "Une ligne par article : auteur, titre, taille et, si disponible, indicateur de création.",
-      "filename_hints": ["article"],
+      "filename_hints": [
+        "article"
+      ],
       "fields": {
-        "username": { "required": true, "aliases": ["username", "user", "user name", "utilisateur", "nom d'utilisateur", "contributeur", "contributor", "creator", "createur", "auteur"] },
-        "title": { "required": true, "aliases": ["title", "titre", "article", "page", "page title"] },
-        "characters": { "required": true, "aliases": ["characters added", "chars added", "character count", "caracteres ajoutes", "caracteres", "bytes added", "mainspace bytes added", "octets ajoutes", "octets", "taille", "size"] },
-        "new": { "required": false, "aliases": ["new", "new article", "is new", "nouvel article", "nouveau", "cree", "created", "creation"] }
+        "username": {
+          "required": true,
+          "aliases": [
+            "username",
+            "user",
+            "user name",
+            "utilisateur",
+            "nom d'utilisateur",
+            "contributeur",
+            "contributor",
+            "creator",
+            "createur",
+            "auteur"
+          ]
+        },
+        "title": {
+          "required": true,
+          "aliases": [
+            "title",
+            "titre",
+            "article",
+            "page",
+            "page title"
+          ]
+        },
+        "characters": {
+          "required": true,
+          "aliases": [
+            "characters added",
+            "chars added",
+            "character count",
+            "caracteres ajoutes",
+            "caracteres",
+            "bytes added",
+            "mainspace bytes added",
+            "octets ajoutes",
+            "octets",
+            "taille",
+            "size"
+          ]
+        },
+        "new": {
+          "required": false,
+          "aliases": [
+            "new",
+            "new article",
+            "is new",
+            "nouvel article",
+            "nouveau",
+            "cree",
+            "created",
+            "creation"
+          ]
+        }
       }
     },
     "uploads": {
       "label": "Photos téléversées",
       "description": "Une ligne par fichier téléversé sur Commons, avec son nombre d'utilisations.",
-      "filename_hints": ["upload", "televers", "commons"],
+      "filename_hints": [
+        "course_uploads",
+        "upload",
+        "televers",
+        "commons"
+      ],
       "fields": {
-        "username": { "required": true, "aliases": ["username", "uploader", "user", "utilisateur", "nom d'utilisateur", "contributeur", "auteur"] },
-        "filename": { "required": true, "aliases": ["filename", "file name", "file", "fichier", "nom du fichier", "title", "titre", "image"] },
-        "usage_count": { "required": true, "aliases": ["usage count", "usages", "usage", "global usage count", "utilisations", "nombre d'utilisations", "used"] }
+        "username": {
+          "required": true,
+          "aliases": [
+            "username",
+            "uploader",
+            "user",
+            "utilisateur",
+            "nom d'utilisateur",
+            "contributeur",
+            "auteur"
+          ]
+        },
+        "filename": {
+          "required": true,
+          "aliases": [
+            "filename",
+            "file name",
+            "file",
+            "fichier",
+            "nom du fichier",
+            "title",
+            "titre",
+            "image"
+          ]
+        },
+        "usage_count": {
+          "required": true,
+          "aliases": [
+            "usage count",
+            "usages",
+            "usage",
+            "global usage count",
+            "utilisations",
+            "nombre d'utilisations",
+            "used"
+          ]
+        },
+        "deleted": {
+          "required": false,
+          "aliases": [
+            "deleted",
+            "supprime"
+          ]
+        }
       }
     },
     "wikidata": {
       "label": "Éléments Wikidata créés",
       "description": "Une ligne par élément créé (identifiant Q…), ou une colonne de quantité par contributeur.",
-      "filename_hints": ["wikidata"],
-      "required_any": [["item", "quantity"]],
+      "filename_hints": [
+        "wikidata"
+      ],
+      "required_any": [
+        [
+          "item",
+          "quantity"
+        ]
+      ],
       "fields": {
-        "username": { "required": true, "aliases": ["username", "user", "utilisateur", "nom d'utilisateur", "contributeur", "creator", "createur", "auteur"] },
-        "item": { "required": false, "aliases": ["item", "qid", "wikidata item", "wikidata id", "element", "entity", "entite", "q"] },
-        "quantity": { "required": false, "aliases": ["items created", "elements crees", "quantity", "quantite", "count", "nombre"] }
+        "username": {
+          "required": true,
+          "aliases": [
+            "username",
+            "user",
+            "utilisateur",
+            "nom d'utilisateur",
+            "contributeur",
+            "creator",
+            "createur",
+            "auteur"
+          ]
+        },
+        "item": {
+          "required": false,
+          "aliases": [
+            "item",
+            "qid",
+            "wikidata item",
+            "wikidata id",
+            "element",
+            "entity",
+            "entite",
+            "q"
+          ]
+        },
+        "quantity": {
+          "required": false,
+          "aliases": [
+            "items created",
+            "elements crees",
+            "quantity",
+            "quantite",
+            "count",
+            "nombre"
+          ]
+        }
       }
     },
     "existing_photos": {
       "label": "Photos existantes réutilisées",
       "description": "Une ligne par photo Commons déjà existante ajoutée à un article.",
-      "filename_hints": ["existant", "existing", "reutilis"],
+      "filename_hints": [
+        "existant",
+        "existing",
+        "reutilis"
+      ],
       "fields": {
-        "username": { "required": true, "aliases": ["username", "user", "utilisateur", "nom d'utilisateur", "contributeur", "auteur"] },
-        "filename": { "required": true, "aliases": ["filename", "file name", "file", "fichier", "nom du fichier", "photo", "image"] },
-        "article": { "required": false, "aliases": ["article", "used in", "utilisee dans", "page", "title", "titre"] }
+        "username": {
+          "required": true,
+          "aliases": [
+            "username",
+            "user",
+            "utilisateur",
+            "nom d'utilisateur",
+            "contributeur",
+            "auteur"
+          ]
+        },
+        "filename": {
+          "required": true,
+          "aliases": [
+            "filename",
+            "file name",
+            "file",
+            "fichier",
+            "nom du fichier",
+            "photo",
+            "image"
+          ]
+        },
+        "article": {
+          "required": false,
+          "aliases": [
+            "article",
+            "used in",
+            "utilisee dans",
+            "page",
+            "title",
+            "titre"
+          ]
+        }
       }
     },
     "editors": {
       "label": "Participants",
       "description": "Liste des participants inscrits (export « editors » de l'Outreach Dashboard). Sert de contexte : n'attribue aucun point.",
-      "filename_hints": ["editor", "participant", "inscrit"],
+      "filename_hints": [
+        "course_editors",
+        "editor",
+        "participant",
+        "inscrit"
+      ],
       "fields": {
-        "username": { "required": true, "aliases": ["username", "user", "utilisateur", "nom d'utilisateur", "contributeur", "participant"] },
-        "edits": { "required": false, "aliases": ["revisions during project", "edits", "total edits", "modifications", "total modifications"] },
-        "bytes": { "required": false, "aliases": ["mainspace bytes added", "bytes added", "octets ajoutes"] },
-        "references": { "required": false, "aliases": ["references added", "references ajoutees"] }
+        "username": {
+          "required": true,
+          "aliases": [
+            "username",
+            "user",
+            "utilisateur",
+            "nom d'utilisateur",
+            "contributeur",
+            "participant"
+          ]
+        },
+        "edits": {
+          "required": false,
+          "aliases": [
+            "revisions during project",
+            "edits",
+            "total edits",
+            "modifications",
+            "total modifications"
+          ]
+        },
+        "bytes": {
+          "required": false,
+          "aliases": [
+            "mainspace bytes added",
+            "bytes added",
+            "octets ajoutes"
+          ]
+        },
+        "references": {
+          "required": false,
+          "aliases": [
+            "references added",
+            "references ajoutees"
+          ]
+        }
       }
     }
   }

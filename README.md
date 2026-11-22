@@ -39,33 +39,48 @@ Un jury de concours Wikimedia (Wiki Loves, campagnes d’édition, ateliers) doi
 | Photo téléversée et utilisée dans un article | 2 |
 | Photo Commons existante ajoutée à un article | 1 |
 
-Les points et les deux seuils de taille sont **réglables par le jury** dans l’interface. Le barème appliqué figure dans l’export CSV et dans le procès-verbal. Les valeurs par défaut sont définies dans [`shared/scoring.default.json`](shared/scoring.default.json).
+Les points, les deux seuils de taille, la règle des co-auteurs et les Wikipédias retenues sont **réglables par le jury** dans l’interface. Le barème appliqué figure dans l’export CSV et dans le procès-verbal. Les valeurs par défaut sont définies dans [`shared/scoring.default.json`](shared/scoring.default.json).
 
 ### Règles de calcul
 
-- **Un article compte une seule fois.** Si un titre apparaît plusieurs fois, seule la première ligne est retenue et les suivantes sont signalées.
-- **La taille est évaluée article par article**, pas en moyenne par participant. Un article sous le seuil minimal est listé dans la fiche avec la mention « Trop court » et rapporte 0 point.
+- **Seules les créations pendant la campagne comptent** : nouveaux articles Wikipédia (espace principal), nouveaux éléments Wikidata (Q…), photos téléversées. Les modifications d’articles existants, les pages de discussion et les pages utilisateur sont ignorées, et leur nombre est affiché.
+- **Pages créées à plusieurs.** L’export « articles » du Dashboard liste tous les participants ayant modifié une page, sans indiquer qui l’a créée. L’ordre de cette liste suit le stockage interne du Dashboard, pas l’ordre de création. Le jury choisit la règle : **partager les points** (par défaut), **points entiers pour chacun** ou **points au premier listé**. Ce choix peut changer le podium : sur un export réel testé, le 1er avec la règle « points entiers » n’est que 3e avec le partage. La règle appliquée figure dans l’export et le procès-verbal.
+- **Un article compte une seule fois.** Les doublons (même wiki, même espace de noms, même titre) sont écartés et signalés. Les pages supprimées sont écartées.
+- **La taille est évaluée article par article**, pas en moyenne par participant, à partir de `characters_added` : les caractères ajoutés par les participants pendant la campagne, tous co-auteurs confondus. Un article sous le seuil minimal est listé dans la fiche avec la mention « Trop court » et rapporte 0 point.
 - Si le fichier d’articles contient une colonne « nouvel article », seuls les articles marqués comme créés sont notés. Sans cette colonne, toutes les lignes sont considérées comme des créations.
-- **Une photo téléversée rapporte des points uniquement si elle est utilisée** (nombre d’utilisations supérieur à 0). Les photos non utilisées restent visibles dans la fiche.
+- **Une photo téléversée rapporte des points uniquement si elle est utilisée** (nombre d’utilisations supérieur à 0). Cette information se trouve dans l’export « uploads » du Dashboard, pas dans l’export « articles » : sans lui, les photos sont listées comme « usage inconnu » et ne rapportent rien.
 - Les noms d’utilisateur sont rapprochés comme le fait MediaWiki : `Koffi_Mensah` et `koffi Mensah` désignent la même personne. Le reste du nom reste sensible à la casse.
 - Les préfixes `File:`, `Fichier:` et `Image:` sont ignorés lors de la comparaison des noms de fichiers.
 - Le fichier des participants (export « editors ») sert de liste d’inscrits et de contexte (modifications, octets, références). **Il n’attribue aucun point.**
 
 ## Formats de fichiers
 
-WikiJury accepte le **CSV** (séparateur virgule, point-virgule ou tabulation) et l’**Excel .xlsx**. Le type de chaque fichier et ses colonnes sont reconnus automatiquement à partir des en-têtes (en français ou en anglais, avec ou sans accents). En cas d’erreur, vous pouvez corriger le type et choisir les colonnes à la main.
+### Exports de l’Outreach Dashboard (recommandé)
+
+Déposez les fichiers CSV de la campagne tels quels ; leur type est reconnu automatiquement.
+
+| Export | Utilisation dans WikiJury |
+|---|---|
+| `…course_articles….csv` | Articles créés (tous les Wikipédias), éléments Wikidata créés, et photos si l’export « uploads » manque |
+| `…course_uploads….csv` | Photos téléversées et leur nombre d’utilisations (`usage_count`) |
+| `…course_editors….csv` | Liste des inscrits et contexte (modifications, octets, références), sans points |
+| `…course_wikidata….csv` | **Non exploitable** : totaux de campagne sans nom d’utilisateur. Les éléments Wikidata sont lus dans l’export « articles » |
+
+### Tableaux maison
+
+WikiJury accepte aussi des tableaux préparés à la main, en **CSV** (séparateur virgule, point-virgule ou tabulation) ou en **Excel .xlsx**, avec des en-têtes en français ou en anglais. Si la détection se trompe, vous pouvez corriger le type et choisir les colonnes à la main.
 
 | Type | Une ligne par… | Colonnes obligatoires | Colonnes facultatives |
 |---|---|---|---|
 | Articles créés | article | contributeur, titre, caractères ajoutés | nouvel article (oui/non) |
-| Photos téléversées | fichier Commons | contributeur, nom du fichier, nombre d’utilisations | |
+| Photos téléversées | fichier Commons | contributeur, nom du fichier, nombre d’utilisations | supprimé |
 | Éléments Wikidata créés | élément | contributeur, et soit l’identifiant (Q…), soit une quantité | |
 | Photos existantes réutilisées | photo ajoutée à un article | contributeur, nom du fichier | article |
 | Participants | participant | contributeur | modifications, octets ajoutés, références ajoutées |
 
 La liste complète des en-têtes reconnus se trouve dans [`shared/columns.json`](shared/columns.json). Pour accepter un nouvel intitulé de colonne, il suffit de l’ajouter dans ce fichier : les deux versions l’utiliseront.
 
-Des fichiers d’exemple fictifs sont fournis dans [`shared/fixtures/`](shared/fixtures/). Le bouton « Essayer avec des données d’exemple » les charge directement.
+Des fichiers d’exemple fictifs sont fournis dans [`shared/fixtures/`](shared/fixtures/) : `dashboard/` reproduit le format du Dashboard, `generic/` des tableaux maison. Le bouton « Essayer avec des données d’exemple » charge les premiers.
 
 ## Deux versions, un seul moteur
 
@@ -75,7 +90,7 @@ Des fichiers d’exemple fictifs sont fournis dans [`shared/fixtures/`](shared/f
 | Données | Lues dans le navigateur, **jamais envoyées** | Envoyées au serveur Streamlit le temps de la session |
 | Usage conseillé | Jurys, partage public, aucune installation | Analyse interne, extension en Python |
 
-Le barème, la correspondance des colonnes et les jeux de test sont partagés dans le dossier `shared/`. Le moteur existe en JavaScript (`web/src/engine/`) et en Python (`streamlit_app/wikijury/`). **Les deux implémentations sont testées contre les mêmes résultats attendus**, calculés à la main ([`shared/fixtures/expected.json`](shared/fixtures/expected.json)). Une divergence fait échouer l’intégration continue.
+Le barème, la correspondance des colonnes et les jeux de test sont partagés dans le dossier `shared/`. Le moteur existe en JavaScript (`web/src/engine/`) et en Python (`streamlit_app/wikijury/`). **Les deux implémentations sont testées contre les mêmes résultats attendus**, calculés à la main ([`shared/fixtures/expected.json`](shared/fixtures/expected.json)). Une divergence fait échouer l’intégration continue. Les deux moteurs ont aussi été comparés sur trois exports réels du Dashboard (environ 7 000 lignes, trois règles de co-auteurs) : classements identiques.
 
 ```
 .

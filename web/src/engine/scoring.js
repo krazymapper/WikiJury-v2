@@ -7,6 +7,8 @@ import {
   parseCount,
 } from './normalize.js';
 
+// Toute règle modifiée ici doit l'être aussi dans streamlit_app/wikijury/scoring.py.
+
 /** Critères notés, dans l'ordre d'affichage. */
 export const CRITERIA = [
   'article_long',
@@ -16,11 +18,18 @@ export const CRITERIA = [
   'photo_existing_used',
 ];
 
+export const COAUTHOR_RULES = {
+  split: 'Partager les points entre co-auteurs',
+  all: 'Points entiers pour chaque co-auteur',
+  first: 'Points au premier participant listé',
+};
+
 export function mergeScoring(base, override = {}) {
   return {
     version: base.version,
     thresholds: { ...base.thresholds, ...(override.thresholds ?? {}) },
     points: { ...base.points, ...(override.points ?? {}) },
+    rules: { ...base.rules, ...(override.rules ?? {}) },
   };
 }
 
@@ -53,25 +62,33 @@ export const CRITERION_SHORT = {
   photo_existing_used: 'Photo réutilisée',
 };
 
-function emptyCounts() {
-  return Object.fromEntries(CRITERIA.map((c) => [c, 0]));
+/** Arrondi au centième, identique en Python (pas d'arrondi bancaire). */
+export const round2 = (x) => Math.floor(x * 100 + 0.5) / 100;
+
+const emptyCounts = () => Object.fromEntries(CRITERIA.map((c) => [c, 0]));
+
+function articleStatus(chars, thresholds) {
+  if (chars >= thresholds.article_long_min_chars) return 'article_long';
+  if (chars >= thresholds.article_short_min_chars) return 'article_short';
+  return 'too_short';
 }
 
 /**
  * Calcule le classement.
- * @param {Array<{kind:string, mapping:Record<string,string|null>, rows:Array<Record<string,unknown>>, source:string}>} datasets
- * @param {{thresholds:object, points:object}} scoring
- * @param {{excluded?: string[]}} options
+ * Chaque pièce justificative (evidence) porte son statut et la part de points
+ * attribuée (share) : les totaux sont recalculés à partir d'elles.
  */
 export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
   const participants = new Map();
   const warnings = [];
-  const seen = { articles: new Set(), uploads: new Set(), wikidata: new Set(), existing_photos: new Set() };
+  const stats = { deleted: 0, ignored: 0 };
+  const seen = new Set();
   const excludedSet = new Set(excluded.map(normalizeUsername).filter(Boolean));
+  const excludedWikis = new Set((scoring.rules.excluded_wikis ?? []).map((w) => String(w).toLowerCase()));
+  const coauthorRule = scoring.rules.coauthors ?? 'split';
+  const hasUploads = datasets.some((d) => d.kind === 'uploads');
 
-  const participant = (rawName) => {
-    const username = normalizeUsername(rawName);
-    if (!username) return null;
+  const participant = (username) => {
     if (!participants.has(username)) {
       participants.set(username, { username, counts: emptyCounts(), evidence: [], context: {} });
     }
@@ -80,16 +97,83 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
 
   const warn = (code, source, row, message) => warnings.push({ code, source, row, message });
 
+  /** Attribue une pièce à un ou plusieurs participants selon la règle des co-auteurs. */
+  const credit = (users, entry) => {
+    const coauthors = users.length > 1 ? users : undefined;
+    users.forEach((username, i) => {
+      let share = 1;
+      if (users.length > 1) {
+        if (coauthorRule === 'split') share = 1 / users.length;
+        else if (coauthorRule === 'first') share = i === 0 ? 1 : 0;
+      }
+      participant(username).evidence.push({ ...entry, share, coauthors });
+    });
+  };
+
+  const once = (key, source, line, label) => {
+    if (seen.has(key)) {
+      warn('duplicate', source, line, `${label} apparaît plusieurs fois : seule la première ligne compte.`);
+      return false;
+    }
+    seen.add(key);
+    return true;
+  };
+
   for (const { kind, mapping, rows, source } of datasets) {
     const get = (row, field) => (mapping[field] ? row[mapping[field]] : undefined);
 
     rows.forEach((row, index) => {
       const line = index + 2; // ligne 1 = en-têtes
-      const p = participant(get(row, 'username'));
-      if (!p) {
+
+      if (kind === 'dashboard_articles') {
+        const users = [...new Set(String(get(row, 'usernames') ?? '').split(',').map(normalizeUsername).filter(Boolean))];
+        if (users.length === 0) {
+          warn('missing_value', source, line, 'Aucun participant indiqué : ligne ignorée.');
+          return;
+        }
+        if (mapping.deleted && parseBool(get(row, 'deleted')) === true) {
+          stats.deleted += 1;
+          return;
+        }
+        const wiki = String(get(row, 'wiki') ?? '').trim().toLowerCase();
+        const ns = parseCount(get(row, 'namespace'));
+        const title = normalizeTitle(get(row, 'title'));
+        if (!title) {
+          warn('missing_value', source, line, 'Titre manquant : ligne ignorée.');
+          return;
+        }
+        const isNew = parseBool(get(row, 'new')) === true;
+        const isArticle = wiki.endsWith('.wikipedia.org') && ns === 0;
+        const isItem = wiki === 'www.wikidata.org' && ns === 0 && /^Q\d+$/.test(normalizeItem(title));
+        const isFile = wiki === 'commons.wikimedia.org' && ns === 6;
+        // Seules les créations pendant la campagne comptent ; les fichiers
+        // sont notés à partir de l'export « uploads » quand il est fourni.
+        if (!isNew || !(isArticle || isItem || isFile) || (isFile && hasUploads)) {
+          stats.ignored += 1;
+          return;
+        }
+        if (!once(`${wiki}|${ns}|${title}`, source, line, `« ${title} » (${wiki})`)) return;
+
+        if (isArticle) {
+          const chars = parseCount(get(row, 'characters'));
+          const status = excludedWikis.has(wiki) ? 'wiki_excluded' : articleStatus(chars, scoring.thresholds);
+          credit(users, { type: 'article', status, label: title, wiki, chars, source });
+        } else if (isItem) {
+          credit(users, { type: 'wikidata', status: 'wikidata_item', label: normalizeItem(title), source });
+        } else {
+          credit(users, { type: 'upload', status: 'photo_usage_unknown', label: title, source });
+        }
+        return;
+      }
+
+      if (columnsUnusable(kind)) return;
+
+      const username = normalizeUsername(get(row, 'username'));
+      if (!username) {
         warn('missing_value', source, line, 'Nom d’utilisateur manquant : ligne ignorée.');
         return;
       }
+      const p = participant(username);
 
       if (kind === 'editors') {
         for (const field of ['edits', 'bytes', 'references']) {
@@ -104,12 +188,7 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           warn('missing_value', source, line, 'Titre d’article manquant : ligne ignorée.');
           return;
         }
-        const key = title;
-        if (seen.articles.has(key)) {
-          warn('duplicate', source, line, `« ${title} » apparaît plusieurs fois : seule la première ligne compte.`);
-          return;
-        }
-        seen.articles.add(key);
+        if (!once(`article|${title}`, source, line, `« ${title} »`)) return;
         let isNew = true;
         if (mapping.new) {
           const parsed = parseBool(get(row, 'new'));
@@ -117,14 +196,8 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           isNew = parsed === true;
         }
         const chars = parseCount(get(row, 'characters'));
-        let status = 'not_new';
-        if (isNew) {
-          if (chars >= scoring.thresholds.article_long_min_chars) status = 'article_long';
-          else if (chars >= scoring.thresholds.article_short_min_chars) status = 'article_short';
-          else status = 'too_short';
-        }
-        if (CRITERIA.includes(status)) p.counts[status] += 1;
-        p.evidence.push({ type: 'article', status, label: title, chars, source });
+        const status = isNew ? articleStatus(chars, scoring.thresholds) : 'not_new';
+        p.evidence.push({ type: 'article', status, label: title, chars, source, share: 1 });
         return;
       }
 
@@ -134,37 +207,30 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           warn('missing_value', source, line, 'Nom de fichier manquant : ligne ignorée.');
           return;
         }
-        if (seen.uploads.has(file)) {
-          warn('duplicate', source, line, `« ${file} » apparaît plusieurs fois : seule la première ligne compte.`);
+        if (mapping.deleted && parseBool(get(row, 'deleted')) === true) {
+          stats.deleted += 1;
           return;
         }
-        seen.uploads.add(file);
+        if (!once(`upload|${file}`, source, line, `« ${file} »`)) return;
         const usage = parseCount(get(row, 'usage_count'));
         const status = usage > 0 ? 'photo_uploaded_used' : 'photo_unused';
-        if (status === 'photo_uploaded_used') p.counts.photo_uploaded_used += 1;
-        p.evidence.push({ type: 'upload', status, label: file, usage, source });
+        p.evidence.push({ type: 'upload', status, label: file, usage, source, share: 1 });
         return;
       }
 
       if (kind === 'wikidata') {
         const item = normalizeItem(get(row, 'item'));
         if (item) {
-          if (seen.wikidata.has(item)) {
-            warn('duplicate', source, line, `${item} apparaît plusieurs fois : seule la première ligne compte.`);
-            return;
-          }
-          seen.wikidata.add(item);
-          p.counts.wikidata_item += 1;
-          p.evidence.push({ type: 'wikidata', status: 'wikidata_item', label: item, source });
+          if (!once(`item|${item}`, source, line, item)) return;
+          p.evidence.push({ type: 'wikidata', status: 'wikidata_item', label: item, source, share: 1 });
           return;
         }
-        const quantity = mapping.quantity ? Math.max(0, parseCount(get(row, 'quantity'))) : 0;
         if (!mapping.quantity) {
           warn('missing_value', source, line, 'Identifiant Wikidata manquant : ligne ignorée.');
           return;
         }
-        p.counts.wikidata_item += quantity;
-        p.evidence.push({ type: 'wikidata', status: 'wikidata_item', label: `${quantity} élément(s) déclaré(s)`, quantity, source });
+        const quantity = Math.max(0, parseCount(get(row, 'quantity')));
+        p.evidence.push({ type: 'wikidata', status: 'wikidata_item', label: `${quantity} élément(s) déclaré(s)`, quantity, source, share: 1 });
         return;
       }
 
@@ -175,22 +241,24 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
           return;
         }
         const article = normalizeTitle(get(row, 'article'));
-        const key = `${file}\u0000${article}`;
-        if (seen.existing_photos.has(key)) {
-          warn('duplicate', source, line, `« ${file} »${article ? ` dans « ${article} »` : ''} apparaît plusieurs fois : seule la première ligne compte.`);
-          return;
-        }
-        seen.existing_photos.add(key);
-        p.counts.photo_existing_used += 1;
-        p.evidence.push({ type: 'existing_photo', status: 'photo_existing_used', label: file, article, source });
+        if (!once(`existing|${file}|${article}`, source, line, `« ${file} »${article ? ` dans « ${article} »` : ''}`)) return;
+        p.evidence.push({ type: 'existing_photo', status: 'photo_existing_used', label: file, article, source, share: 1 });
       }
     });
   }
 
   const list = [...participants.values()].map((p) => {
-    const points = Object.fromEntries(CRITERIA.map((c) => [c, p.counts[c] * (Number(scoring.points[c]) || 0)]));
-    const total = CRITERIA.reduce((sum, c) => sum + points[c], 0);
-    return { ...p, points, total, excluded: excludedSet.has(p.username), rank: null };
+    const counts = emptyCounts();
+    const raw = emptyCounts();
+    for (const e of p.evidence) {
+      if (!CRITERIA.includes(e.status) || e.share <= 0) continue;
+      const quantity = e.quantity ?? 1;
+      counts[e.status] += quantity;
+      raw[e.status] += (Number(scoring.points[e.status]) || 0) * e.share * quantity;
+    }
+    const points = Object.fromEntries(CRITERIA.map((c) => [c, round2(raw[c])]));
+    const total = round2(CRITERIA.reduce((sum, c) => sum + points[c], 0));
+    return { ...p, counts, points, total, excluded: excludedSet.has(p.username), rank: null };
   });
 
   const byScore = (a, b) => b.total - a.total || compareNames(a.username, b.username);
@@ -201,5 +269,22 @@ export function computeRanking(datasets, scoring, { excluded = [] } = {}) {
   });
   const out = list.filter((p) => p.excluded).sort((a, b) => compareNames(a.username, b.username));
 
-  return { participants: [...ranked, ...out], warnings };
+  return { participants: [...ranked, ...out], warnings, stats };
+}
+
+function columnsUnusable(kind) {
+  return kind === 'dashboard_summary';
+}
+
+/** Wikipédias présentes dans les données, pour le filtre du jury. */
+export function wikisInData(datasets) {
+  const wikis = new Set();
+  for (const { kind, mapping, rows } of datasets) {
+    if (kind !== 'dashboard_articles' || !mapping.wiki) continue;
+    for (const row of rows) {
+      const wiki = String(row[mapping.wiki] ?? '').trim().toLowerCase();
+      if (wiki.endsWith('.wikipedia.org')) wikis.add(wiki);
+    }
+  }
+  return [...wikis].sort();
 }

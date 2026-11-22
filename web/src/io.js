@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { CRITERIA, CRITERION_SHORT } from './engine/scoring.js';
+import { COAUTHOR_RULES, CRITERIA, CRITERION_SHORT } from './engine/scoring.js';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -38,7 +38,8 @@ export async function parseFile(file) {
 /** Neutralise les formules lors d'une ouverture dans un tableur (injection CSV). */
 function cell(value) {
   let s = value === null || value === undefined ? '' : String(value);
-  if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (typeof value === 'number') s = s.replace('.', ','); // décimale à la française pour Excel
+  else if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -63,6 +64,8 @@ export function rankingToCsv(participants, scoring) {
     ...CRITERIA.map((c) => `${CRITERION_SHORT[c]} = ${scoring.points[c]} pt`),
     `Article long ≥ ${scoring.thresholds.article_long_min_chars} car.`,
     `Article court ≥ ${scoring.thresholds.article_short_min_chars} car.`,
+    `Co-auteurs : ${COAUTHOR_RULES[scoring.rules.coauthors]}`,
+    ...(scoring.rules.excluded_wikis.length ? [`Wikis non retenus : ${scoring.rules.excluded_wikis.join(', ')}`] : []),
   ];
   return '﻿' + [header, ...lines, [], scoringLine].map((r) => r.map(cell).join(';')).join('\r\n');
 }
